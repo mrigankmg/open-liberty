@@ -130,7 +130,8 @@ ERROR_FAILED_TO_RESOLVE_FEATURE_FROM_DIR.explanation=Instalator nie m\u00f3g\u01
 ERROR_FAILED_TO_RESOLVE_FEATURE_FROM_DIR.useraction=Upewnij si\u0119, \u017ce katalog zawiera sk\u0142adnik i pon\u00f3w operacj\u0119.
 
 ERROR_UNABLE_TO_LOCATE_COMMAND_EXE=CWWKF1228E: Nie mo\u017cna znale\u017a\u0107 pliku wykonywalnego {0} po sprawdzeniu w nast\u0119puj\u0105cych po\u0142o\u017ceniach: {1}
-ERROR_UNABLE_TO_LOCATE_COMMAND_EXE.explanation=Instalator nie znalaz\u0142 lub nie mo\u017ce znale\u017a\u0107 pliku wykonywalnego.
+
+ERROR_UNABLE_TO_LOCATE_COMMAND_EXE.explanation=Instalator nie m\u00f3g\u0142 znale\u017a\u0107 pliku wykonywalnego.
 ERROR_UNABLE_TO_LOCATE_COMMAND_EXE.useraction=Upewnij si\u0119, \u017ce plik wykonywalny istnieje i znajduje si\u0119 w jednym z podanych po\u0142o\u017ce\u0144.
 
 ERROR_EXECUTING_COMMAND=CWWKF1229E: Wyst\u0105pi\u0142 b\u0142\u0105d podczas wykonywania komendy: {0}. Komenda zwr\u00f3ci\u0142a kod wyj\u015bcia {1} i komunikat o b\u0142\u0119dzie: {2}
@@ -254,7 +255,7 @@ ERROR_ASSET_MISSING_DEPENDENT.explanation=Nie mo\u017cna pobra\u0107 lub zainsta
 ERROR_ASSET_MISSING_DEPENDENT.useraction=Skonfiguruj program narz\u0119dziowy installUtility tak, aby nawi\u0105zywa\u0142 po\u0142\u0105czenie z repozytorium produktu IBM WebSphere Liberty w celu pobrania lub zainstalowania zasobu aplikacyjnego. Mo\u017cna r\u00f3wnie\u017c pobra\u0107 plik wlp-featureRepo-<wersja>.zip z serwisu WWW IBM Fix Central i skonfigurowa\u0107 rozpakowany folder jako repozytorium oparte na katalogu. W razie braku dost\u0119pu do Internetu skontaktuj si\u0119 z administratorem, aby pobra\u0107 brakuj\u0105cy zas\u00f3b aplikacyjny i wszystkie zale\u017cno\u015bci oraz doda\u0107 je do skonfigurowanego repozytorium. Wi\u0119cej informacji na temat instalowania zasob\u00f3w aplikacyjnych zawiera dokumentacja programu narz\u0119dziowego installUtility w Centrum Wiedzy IBM. Je\u015bli problem b\u0119dzie si\u0119 powtarza\u0142, zapoznaj si\u0119 z informacjami na temat okre\u015blania problemu na stronie WWW wsparcia dla serwera WebSphere Application Server: http://www.ibm.com/software/webservers/appserv/was/support.
 
 ERROR_FAILED_TO_RESOLVE_ASSETS=CWWKF1259E: Nie mo\u017cna uzyska\u0107 nast\u0119puj\u0105cych zasob\u00f3w aplikacyjnych: {0}. Sprawd\u017a, czy podane zasoby aplikacyjne s\u0105 poprawne. Aby znale\u017a\u0107 identyfikatory odpowiednich zasob\u00f3w aplikacyjnych, uruchom komend\u0119 installUtility find.
-ERROR_FAILED_TO_RESOLVE_ASSETS.explanation=Instalator nie mo\u017ce pobra\u0107 okre\u015blonych zasob\u00f3w aplikacyjnych z repozytori\u00f3w.
+ERROR_FAILED_TO_RESOLVE_ASSETS.explanation=Instalator nie m\u00f3g\u0142 pobra\u0107 okre\u015blonych zasob\u00f3w aplikacyjnych z repozytori\u00f3w.
 ERROR_FAILED_TO_RESOLVE_ASSETS.useraction=Upewnij si\u0119, \u017ce okre\u015blone zasoby aplikacyjne s\u0105 poprawne, \u017ce podano poprawny identyfikator u\u017cytkownika i poprawne has\u0142o oraz \u017ce repozytoria s\u0105 dost\u0119pne.
 
 ERROR_ASSET_NOT_APPLICABLE=CWWKF1260E: Zas\u00f3b aplikacyjny {0} nie ma zastosowania do instalacji produktu {1}.  {2}
@@ -432,6 +433,15 @@ ERROR_EXTENSION_FROM_ASSETID_NOT_FOUND.action= Je\u015bli chcesz zainstalowa\u01
 ERROR_NON_FEATURE_CANNOT_INSTALL_TO_EXTENSION=CWWKF1298E: Element {0} nie jest sk\u0142adnikiem, wi\u0119c nie mo\u017cna go zainstalowa\u0107 w rozszerzeniu produktu. Uruchom komend\u0119 bez okre\u015blania tego sk\u0142adnika.
 ERROR_NON_FEATURE_CANNOT_INSTALL_TO_EXTENSION.explanation=W rozszerzeniu produktu mo\u017cna zainstalowa\u0107 tylko sk\u0142adniki.
 ERROR_NON_FEATURE_CANNOT_INSTALL_TO_EXTENSION.action=Uruchom ponownie komend\u0119 installUtility install bez okre\u015blania sk\u0142adnika.
+
+ERROR_FAILED_TO_RESOLVE_FEATURES_FOR_OPEN_LIBERTY=CWWKF1299E: Nie mo\u017cna pobra\u0107 nast\u0119puj\u0105cych sk\u0142adnik\u00f3w: {0}. Sprawd\u017a, czy te sk\u0142adniki s\u0105 poprawne dla biblioteki Open Liberty.
+ERROR_FAILED_TO_RESOLVE_FEATURES_FOR_OPEN_LIBERTY.explanation=Instalator nie m\u00f3g\u0142 pobra\u0107 okre\u015blonych sk\u0142adnik\u00f3w z po\u0142\u0105czonych repozytori\u00f3w.
+ERROR_FAILED_TO_RESOLVE_FEATURES_FOR_OPEN_LIBERTY.useraction=Je\u015bli okre\u015blony sk\u0142adnik istnieje, sprawd\u017a czy jest on przeznaczony dla biblioteki Open Liberty.
+
+ERROR_INVALID_PRODUCT_EDITION_FOR_OPEN_LIBERTY_FEATURE=CWWKF1300E: Sk\u0142adnika {0} nie mo\u017cna zainstalowa\u0107 w wersji IBM WebSphere Application Server Liberty Core, poniewa\u017c ma on zastosowanie do innych wersji produktu IBM WebSphere Application Server Liberty i biblioteki Open Liberty. U\u017cyj dzia\u0142ania find komendy featureManager, aby pobra\u0107 list\u0119 sk\u0142adnik\u00f3w maj\u0105cych zastosowanie do wersji IBM WebSphere Application Server Liberty Core.
+ERROR_INVALID_PRODUCT_EDITION_FOR_OPEN_LIBERTY_FEATURE.explanation=Sk\u0142adnik nie ma zastosowania do edycji zainstalowanego produktu.
+ERROR_INVALID_PRODUCT_EDITION_FOR_OPEN_LIBERTY_FEATURE.useraction=Zainstaluj sk\u0142adniki, kt\u00f3re s\u0105 obs\u0142ugiwane przez edycj\u0119 produktu.
+
 
 # Following messages for info logging purpose
 LOG_INSTALL_FEATURES=CWWKF1300I: Instalowanie nast\u0119puj\u0105cych sk\u0142adnik\u00f3w: {0}.

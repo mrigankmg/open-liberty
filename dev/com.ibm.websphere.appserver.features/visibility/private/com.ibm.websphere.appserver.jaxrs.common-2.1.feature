@@ -10,7 +10,6 @@ IBM-App-ForceRestart: uninstall, \
  com.ibm.websphere.appserver.javax.mail-1.6, \
  com.ibm.websphere.appserver.globalhandler-1.0, \
  com.ibm.websphere.appserver.javax.annotation-1.3; apiJar=false, \
- com.ibm.websphere.appserver.json-1.0, \
  com.ibm.websphere.appserver.jsonpInternal-1.1, \
  com.ibm.websphere.appserver.jsonbInternal-1.0, \
  com.ibm.websphere.appserver.internal.slf4j-1.7.7
@@ -28,11 +27,11 @@ IBM-App-ForceRestart: uninstall, \
  com.ibm.ws.org.apache.cxf.cxf.tools.common.3.2, \
  com.ibm.ws.org.apache.cxf.cxf.tools.wadlto.jaxrs.3.2, \
  com.ibm.ws.org.apache.ws.xmlschema.core.2.0.3, \
- com.ibm.websphere.javaee.jaxrs.2.1; location:="dev/api/spec/,lib/", \
+ com.ibm.websphere.javaee.jaxrs.2.1; location:="dev/api/spec/,lib/"; mavenCoordinates="javax.ws.rs:javax.ws.rs-api:2.1", \
  com.ibm.ws.jaxrs.2.0.tools
 -files=dev/api/ibm/javadoc/com.ibm.websphere.appserver.api.jaxrs20_1.0-javadoc.zip, \
  bin/jaxrs/wadl2java, \
  bin/jaxrs/wadl2java.bat, \
  bin/jaxrs/tools/wadl2java.jar
-kind=beta
+kind=ga
 edition=core

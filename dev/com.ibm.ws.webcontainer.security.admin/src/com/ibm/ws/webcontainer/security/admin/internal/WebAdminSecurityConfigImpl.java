@@ -44,11 +44,13 @@ class WebAdminSecurityConfigImpl implements WebAppSecurityConfig {
     private final Boolean ssoUseDomainFromURL = false;
     private final Boolean useAuthenticationDataForUnprotectedResource = true;
     private final Boolean allowFailOverToFormLogin = true;
+    // in order to maintain the original behavior, APP_DEFINED is not supported.
+    // if APP_DEFINED is supported, if login_config in web.xml is set as CLIENT_CERT,
+    // it no longer can failover to FORM.
+    private final Boolean allowFailOverToAppDefined = false;
     private final Boolean includePathInWASReqURL = false;
     private final Boolean trackLoggedOutSSOCookies = false;
     private final Boolean useOnlyCustomCookieName = false;
-    private final String jaspicSessionCookieName = "jaspicSession";
-    private final Boolean jaspicSessionForMechanismsEnabled = true;
 
     WebAdminSecurityConfigImpl(Map<String, Object> newProperties) {
         //nothing to do, values are hard-coded
@@ -187,6 +189,18 @@ class WebAdminSecurityConfigImpl implements WebAppSecurityConfig {
     }
 
     /**
+     * {@inheritDoc}<p>
+     * This does not need an implemented as the Admin Application security
+     * configuration properties never change.
+     *
+     * @return {@code null}
+     */
+    @Override
+    public Map<String, String> getChangedPropertiesMap(WebAppSecurityConfig original) {
+        return null;
+    }
+
+    /**
      * {@inheritDoc} Admin Applications do not have a default Form Login URL.
      *
      * @return {@code null}
@@ -214,8 +228,14 @@ class WebAdminSecurityConfigImpl implements WebAppSecurityConfig {
 
     /** {@inheritDoc} */
     @Override
+    public boolean getAllowFailOverToAppDefined() {
+        return allowFailOverToAppDefined;
+    }
+
+    /** {@inheritDoc} */
+    @Override
     public boolean allowFailOver() {
-        return allowFailOverToBasicAuth || allowFailOverToFormLogin;
+        return allowFailOverToBasicAuth || allowFailOverToFormLogin || allowFailOverToAppDefined;
     }
 
     /** {@inheritDoc} */
@@ -250,7 +270,7 @@ class WebAdminSecurityConfigImpl implements WebAppSecurityConfig {
 
     /** {@inheritDoc} */
     @Override
-    public String getOverrideHttpAuthenticationMechanism() {
+    public String getOverrideHttpAuthMethod() {
         return null;
     }
 
@@ -265,17 +285,4 @@ class WebAdminSecurityConfigImpl implements WebAppSecurityConfig {
     public String getBasicAuthRealmName() {
         return null;
     }
-
-    /** {@inheritDoc} */
-    @Override
-    public String getJaspicSessionCookieName() {
-        return jaspicSessionCookieName;
-    }
-
-    /** {@inheritDoc} */
-    @Override
-    public boolean isJaspicSessionForMechanismsEnabled() {
-        return jaspicSessionForMechanismsEnabled;
-    }
-
 }

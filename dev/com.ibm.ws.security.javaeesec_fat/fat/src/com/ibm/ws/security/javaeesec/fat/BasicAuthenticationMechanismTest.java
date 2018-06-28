@@ -36,6 +36,7 @@ import com.ibm.ws.security.javaeesec.fat_helper.ServerHelper;
 import com.ibm.ws.security.javaeesec.fat_helper.WCApplicationHelper;
 import com.ibm.ws.webcontainer.security.test.servlets.SSLHelper;
 
+import componenttest.annotation.AllowedFFDC;
 import componenttest.annotation.MinimumJavaLevel;
 import componenttest.custom.junit.runner.FATRunner;
 import componenttest.custom.junit.runner.Mode;
@@ -43,12 +44,12 @@ import componenttest.custom.junit.runner.Mode.TestMode;
 import componenttest.topology.impl.LibertyServer;
 import componenttest.topology.impl.LibertyServerFactory;
 
-@MinimumJavaLevel(javaLevel = 1.8)
+@MinimumJavaLevel(javaLevel = 8)
 @RunWith(FATRunner.class)
 @Mode(TestMode.FULL)
 public class BasicAuthenticationMechanismTest extends JavaEESecTestBase {
 
-    private static final String COOKIE_NAME = "jaspicSession";
+    private static final String COOKIE_NAME = "LtpaToken2";
     private static final String JAR_NAME = "JavaEESecBase.jar";
     private static final String queryString = "/JavaEESecBasicAuthServlet/JavaEESecBasic";
 
@@ -112,7 +113,7 @@ public class BasicAuthenticationMechanismTest extends JavaEESecTestBase {
      * <LI> Verify response contains the appropriate required information.
      * </OL>
      */
-    @Mode(TestMode.LITE)
+    @AllowedFFDC(value = { "com.ibm.ws.security.registry.RegistryException" })
     @Test
     public void testBasicAuthValidUserInRole_AllowedAccess() throws Exception {
         String response = executeGetRequestBasicAuthCreds(httpclient, urlHttp + queryString, Constants.javaeesec_basicRoleUser, Constants.javaeesec_basicRolePwd,
@@ -133,7 +134,7 @@ public class BasicAuthenticationMechanismTest extends JavaEESecTestBase {
      * <LI> Verify response contains the appropriate required information.
      * </OL>
      */
-    @Mode(TestMode.LITE)
+    @AllowedFFDC(value = { "com.ibm.ws.security.registry.RegistryException" })
     @Test
     public void testAnnotatedBasicAuthValidUserInRole_AllowedAccess() throws Exception {
         String response = executeGetRequestBasicAuthCreds(httpclient, urlHttp + "/JavaEESecAnnotatedBasicAuthServlet/JavaEESecAnnotatedBasic",
@@ -156,7 +157,6 @@ public class BasicAuthenticationMechanismTest extends JavaEESecTestBase {
      * <LI> Verify response contains the appropriate required information.
      * </OL>
      */
-    @Mode(TestMode.LITE)
     @Test
     public void testBasicAuthValidUserInRole_DeniedAccess() throws Exception {
         executeGetRequestBasicAuthCreds(httpclient, urlHttp + queryString, Constants.jaspi_invalidUser, Constants.jaspi_invalidPwd,
@@ -176,14 +176,12 @@ public class BasicAuthenticationMechanismTest extends JavaEESecTestBase {
      * <LI> Verify response contains the appropriate required information.
      * </OL>
      */
-    @Mode(TestMode.LITE)
     @Test
     public void testBasicAuthValidUserInRole_DeniedAccess_WrongPassword() throws Exception {
         executeGetRequestBasicAuthCreds(httpclient, urlHttp + queryString, Constants.javaeesec_basicRoleUser, Constants.jaspi_invalidPwd,
                                         HttpServletResponse.SC_FORBIDDEN);
     }
 
-    @Mode(TestMode.LITE)
     @Test
     public void testSSOForBasicAuthenticationMechanismDefinition() throws Exception {
         String cookieHeaderString = driveResourceFlow(urlHttps + "/JavaEESecAnnotatedBasicAuthServlet/JavaEESecAnnotatedBasic");
@@ -198,12 +196,6 @@ public class BasicAuthenticationMechanismTest extends JavaEESecTestBase {
         verifyUserResponse(response, Constants.getUserPrincipalFound + Constants.javaeesec_basicRoleLDAPUser, Constants.getRemoteUserFound + Constants.javaeesec_basicRoleLDAPUser);
         Header cookieHeader = getCookieHeader(httpResponse, COOKIE_NAME);
         return cookieHeader.toString();
-    }
-
-    private void assertCookie(String cookieHeaderString, boolean secure, boolean httpOnly) {
-        assertTrue("The Path parameter must be set.", cookieHeaderString.contains("Path=/"));
-        assertEquals("The Secure parameter must" + (secure == true ? "" : " not" + " be set."), secure, cookieHeaderString.contains("Secure"));
-        assertEquals("The HttpOnly parameter must" + (httpOnly == true ? "" : " not" + " be set."), httpOnly, cookieHeaderString.contains("HttpOnly"));
     }
 
     private String redriveFlowWithCookieOnly(String resource, int expectedStatusCode) throws Exception {

@@ -46,8 +46,6 @@ class FeatureWebSecurityConfigImpl implements WebAppSecurityConfig {
     private final Boolean includePathInWASReqURL = false;
     private final Boolean trackLoggedOutSSOCookies = false;
     private final Boolean useOnlyCustomCookieName = false;
-    private final String jaspicSessionCookieName = "jaspicSession";
-    private final Boolean jaspicSessionForMechanismsEnabled = true;
 
     FeatureWebSecurityConfigImpl(Map<String, Object> newProperties) {
         //nothing to do, values are hard-coded
@@ -248,11 +246,28 @@ class FeatureWebSecurityConfigImpl implements WebAppSecurityConfig {
 
     /**
      * {@inheritDoc}<p>
-     * This does not need an implemented as these properties never change.
      */
     @Override
     public String getChangedProperties(WebAppSecurityConfig original) {
-        return "";
+        WebAppSecurityConfig globalConfig = WebAppSecurityCollaboratorImpl.getGlobalWebAppSecurityConfig();
+        if (globalConfig != null) {
+            return globalConfig.getChangedProperties(original);
+        } else {
+            return "";
+        }
+    }
+
+    /**
+     * {@inheritDoc}<p>
+     */
+    @Override
+    public Map<String, String> getChangedPropertiesMap(WebAppSecurityConfig original) {
+        WebAppSecurityConfig globalConfig = WebAppSecurityCollaboratorImpl.getGlobalWebAppSecurityConfig();
+        if (globalConfig != null) {
+            return globalConfig.getChangedPropertiesMap(original);
+        } else {
+            return null;
+        }
     }
 
     /** {@inheritDoc} */
@@ -283,6 +298,16 @@ class FeatureWebSecurityConfigImpl implements WebAppSecurityConfig {
         WebAppSecurityConfig globalConfig = WebAppSecurityCollaboratorImpl.getGlobalWebAppSecurityConfig();
         if (globalConfig != null)
             return WebAppSecurityCollaboratorImpl.getGlobalWebAppSecurityConfig().getAllowFailOverToFormLogin();
+        else
+            return false;
+    }
+
+    /** {@inheritDoc} */
+    @Override
+    public boolean getAllowFailOverToAppDefined() {
+        WebAppSecurityConfig globalConfig = WebAppSecurityCollaboratorImpl.getGlobalWebAppSecurityConfig();
+        if (globalConfig != null)
+            return WebAppSecurityCollaboratorImpl.getGlobalWebAppSecurityConfig().getAllowFailOverToAppDefined();
         else
             return false;
     }
@@ -337,10 +362,10 @@ class FeatureWebSecurityConfigImpl implements WebAppSecurityConfig {
 
     /** {@inheritDoc} */
     @Override
-    public String getOverrideHttpAuthenticationMechanism() {
+    public String getOverrideHttpAuthMethod() {
         WebAppSecurityConfig globalConfig = WebAppSecurityCollaboratorImpl.getGlobalWebAppSecurityConfig();
         if (globalConfig != null)
-            return WebAppSecurityCollaboratorImpl.getGlobalWebAppSecurityConfig().getOverrideHttpAuthenticationMechanism();
+            return WebAppSecurityCollaboratorImpl.getGlobalWebAppSecurityConfig().getOverrideHttpAuthMethod();
         else
             return null;
     }
@@ -363,25 +388,5 @@ class FeatureWebSecurityConfigImpl implements WebAppSecurityConfig {
             return WebAppSecurityCollaboratorImpl.getGlobalWebAppSecurityConfig().getBasicAuthRealmName();
         else
             return null;
-    }
-
-    /** {@inheritDoc} */
-    @Override
-    public String getJaspicSessionCookieName() {
-        WebAppSecurityConfig globalConfig = WebAppSecurityCollaboratorImpl.getGlobalWebAppSecurityConfig();
-        if (globalConfig != null)
-            return WebAppSecurityCollaboratorImpl.getGlobalWebAppSecurityConfig().getJaspicSessionCookieName();
-        else
-            return jaspicSessionCookieName;
-    }
-
-    /** {@inheritDoc} */
-    @Override
-    public boolean isJaspicSessionForMechanismsEnabled() {
-        WebAppSecurityConfig globalConfig = WebAppSecurityCollaboratorImpl.getGlobalWebAppSecurityConfig();
-        if (globalConfig != null)
-            return WebAppSecurityCollaboratorImpl.getGlobalWebAppSecurityConfig().isJaspicSessionForMechanismsEnabled();
-        else
-            return jaspicSessionForMechanismsEnabled;
     }
 }

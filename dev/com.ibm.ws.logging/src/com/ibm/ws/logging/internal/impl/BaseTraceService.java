@@ -32,6 +32,7 @@ import com.ibm.ws.collector.manager.buffer.BufferManagerEMQHelper;
 import com.ibm.ws.collector.manager.buffer.BufferManagerImpl;
 import com.ibm.ws.collector.manager.buffer.SimpleRotatingSoftQueue;
 import com.ibm.ws.kernel.boot.logging.LoggerHandlerManager;
+import com.ibm.ws.kernel.boot.logging.WsLogManager;
 import com.ibm.ws.logging.RoutedMessage;
 import com.ibm.ws.logging.WsLogHandler;
 import com.ibm.ws.logging.WsMessageRouter;
@@ -177,6 +178,9 @@ public class BaseTraceService implements TrService {
     /** True if java.lang.instrument is available for trace. */
     private boolean javaLangInstrument;
 
+    /** Check to see if HPEL is enabled **/
+    private boolean isHpelEnabled;
+
     /** Configured message Ids to be suppressed in console/message.log */
     private volatile Collection<String> hideMessageids;
 
@@ -229,6 +233,9 @@ public class BaseTraceService implements TrService {
      */
     @Override
     public void init(LogProviderConfig config) {
+        // Check to see if the Log provider is Binary Logging
+        isHpelEnabled = WsLogManager.isBinaryLoggingEnabled();
+
         update(config);
 
         registerLoggerHandlerSingleton();
@@ -278,8 +285,9 @@ public class BaseTraceService implements TrService {
         consoleLogLevel = trConfig.getConsoleLogLevel();
         copySystemStreams = trConfig.copySystemStreams();
         hideMessageids = trConfig.getMessagesToHide();
-        //add hideMessageIds to log header. This is printed when its configured in bootstrap.properties
-        if (hideMessageids.size() > 0) {
+        //add hideMessageIds to log header, only for default logging, since for binary logging, the messages will be only hidden in console.log.
+        //This is printed when its configured in bootstrap.properties
+        if (hideMessageids.size() > 0 && !isHpelEnabled) {
             logHeader = logHeader.concat("Suppressed message ids: " + hideMessageids).concat((LoggingConstants.nl));
         }
         if (formatter == null || trConfig.getTraceFormat() != formatter.getTraceFormat()) {
@@ -294,7 +302,8 @@ public class BaseTraceService implements TrService {
 
         initializeWriters(trConfig);
         if (hideMessageids.size() > 0) {
-            Tr.info(TraceSpecification.getTc(), "MESSAGES_CONFIGURED_HIDDEN_2", new Object[] { hideMessageids });
+            String msgKey = isHpelEnabled ? "MESSAGES_CONFIGURED_HIDDEN_HPEL" : "MESSAGES_CONFIGURED_HIDDEN_2";
+            Tr.info(TraceSpecification.getTc(), msgKey, new Object[] { hideMessageids });
         }
 
         /*
@@ -307,8 +316,6 @@ public class BaseTraceService implements TrService {
         //Retrieve collectormgrPiplineUtils
         if (collectorMgrPipelineUtils == null) {
             collectorMgrPipelineUtils = CollectorManagerPipelineUtils.getInstance();
-            collectorMgrPipelineUtils.setJsonTrService(true);
-
         }
 
         //Sources
@@ -432,7 +439,7 @@ public class BaseTraceService implements TrService {
      */
     private void commonConsoleLogHandlerUpdates() {
         if (consoleLogHandler != null) {
-            consoleLogHandler.setFormatter(formatter);
+            consoleLogHandler.setBasicFormatter(formatter);
             consoleLogHandler.setConsoleLogLevel(consoleLogLevel.intValue());
             consoleLogHandler.setCopySystemStreams(copySystemStreams);
         }
@@ -444,7 +451,7 @@ public class BaseTraceService implements TrService {
     private void commonMessageLogHandlerUpdates() {
         if (messageLogHandler != null) {
             messageLogHandler.setWriter(messagesLog);
-            messageLogHandler.setFormatter(formatter);
+            messageLogHandler.setBasicFormatter(formatter);
         }
     }
 
@@ -675,7 +682,9 @@ public class BaseTraceService implements TrService {
         if (internalMsgRouter != null) {
             retMe &= internalMsgRouter.route(routedMessage);
         } else {
-            earlierMessages.add(routedMessage);
+            String message = formatter.messageLogFormat(routedMessage.getLogRecord(), routedMessage.getFormattedVerboseMsg());
+            RoutedMessage specialRoutedMessage = new RoutedMessageImpl(routedMessage.getFormattedMsg(), routedMessage.getFormattedVerboseMsg(), message, routedMessage.getLogRecord());
+            earlierMessages.add(specialRoutedMessage);
         }
         return retMe;
     }
@@ -733,7 +742,6 @@ public class BaseTraceService implements TrService {
         Level level = logRecord.getLevel();
         int levelValue = level.intValue();
         TraceWriter detailLog = traceLog;
-        //check if tracefilename is stdout
 
         if (levelValue >= Level.INFO.intValue()) {
 
@@ -742,7 +750,7 @@ public class BaseTraceService implements TrService {
 
             RoutedMessage routedMessage = null;
             if (externalMessageRouter.get() != null) {
-                String message = formatter.messageLogFormat(logRecord, logRecord.getMessage());
+                String message = formatter.messageLogFormat(logRecord, formattedVerboseMsg);
                 routedMessage = new RoutedMessageImpl(formattedMsg, formattedVerboseMsg, message, logRecord);
             } else {
                 routedMessage = new RoutedMessageImpl(formattedMsg, formattedVerboseMsg, null, logRecord);
@@ -787,7 +795,7 @@ public class BaseTraceService implements TrService {
     /**
      * @param routedMessage
      */
-    private void publishToLogSource(RoutedMessage routedMessage) {
+    protected void publishToLogSource(RoutedMessage routedMessage) {
         try {
             if (!(counterForLogSource.incrementCount() > 2)) {
                 logSource.publish(routedMessage);
@@ -1110,7 +1118,7 @@ public class BaseTraceService implements TrService {
      * @return null if the stack trace should be suppressed, or an indicator we're suppressing,
      *         or maybe the original stack trace
      */
-    private String filterStackTraces(String txt) {
+    public static String filterStackTraces(String txt) {
         // Check for stack traces, which we may want to trim
         StackTraceFlags stackTraceFlags = traceFlags.get();
         // We have a little thread-local state machine here with four states controlled by two

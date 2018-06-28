@@ -6,8 +6,14 @@
  * http://www.eclipse.org/legal/epl-v10.html
  *
  * Contributors:
- *     IBM Corporation - initial API and implementation
+ * IBM Corporation - initial API and implementation
  *******************************************************************************/
+/*
+ * This class handles the builder objects, the JwtSsoComponent class handles the
+ * consumer objects. This class functions as both a jwtsso component and as the
+ * default builder entity for jwtsso, which has different settings than the
+ * default builder entity for jwt.
+ */
 package com.ibm.ws.security.jwtsso.internal;
 
 import java.security.PrivateKey;
@@ -34,15 +40,18 @@ import com.ibm.ws.security.common.jwk.interfaces.JSONWebKey;
 import com.ibm.ws.security.jwt.config.JwtConfig;
 import com.ibm.ws.security.jwt.utils.JwtUtils;
 import com.ibm.ws.security.jwtsso.config.JwtSsoBuilderConfig;
+import com.ibm.ws.security.jwtsso.utils.ConfigUtils;
 import com.ibm.ws.security.jwtsso.utils.IssuerUtil;
 import com.ibm.ws.security.jwtsso.utils.JwtSsoConstants;
 import com.ibm.ws.webcontainer.security.WebAppSecurityConfig;
 import com.ibm.ws.webcontainer.security.util.WebConfigUtils;
+import com.ibm.wsspi.kernel.service.utils.ConcurrentServiceReferenceMap;
 
 // This class handles the builder objects, the JwtSsoComponent class handles the consumer objects.
 @Component(service = { JwtSsoBuilderConfig.class,
-		JwtConfig.class }, immediate = true, configurationPolicy = ConfigurationPolicy.REQUIRE, configurationPid = "com.ibm.ws.security.jwtsso", name = "jwtSsoBuilderConfig", property = "service.vendor=IBM")
+        JwtConfig.class }, immediate = true, configurationPolicy = ConfigurationPolicy.REQUIRE, configurationPid = "com.ibm.ws.security.jwtsso", name = "jwtSsoBuilderConfig", property = "service.vendor=IBM")
 public class JwtSsoBuilderComponent implements JwtSsoBuilderConfig {
+
 
 	private static final TraceComponent tc = Tr.register(JwtSsoBuilderComponent.class);
 
@@ -54,18 +63,23 @@ public class JwtSsoBuilderComponent implements JwtSsoBuilderConfig {
 
 	private boolean setCookiePathToWebAppContextPath;
 	private boolean includeLtpaCookie;
-	private boolean fallbackToLtpa;
+	private boolean useLtpaIfJwtAbsent;
 	private boolean cookieSecureFlag;
 	private String jwtBuilderRef;
 	private String jwtConsumerRef;
 	private String cookieName;
 	private WebAppSecurityConfig webAppSecConfig;
 	private String signatureAlgorithm = "RS256";
-
+	private final static String KEY_JWT_SERVICE = "jwtConfig";
+	private final static String CFG_KEY_ID = "id";
+	private final JwtConfig builderConfig = null;
+	private final Object initlock = new Object();
+	ConcurrentServiceReferenceMap<String, JwtConfig> jwtServiceMapRef = new ConcurrentServiceReferenceMap<String, JwtConfig>(
+			KEY_JWT_SERVICE);
 	protected static final String KEY_UNIQUE_ID = "id";
 	protected String uniqueId = null;
-
 	private IssuerUtil issuerUtil;
+	private boolean isDefaultBuilder = false;
 
 	@Override
 	public boolean isHttpOnlyCookies() {
@@ -93,8 +107,8 @@ public class JwtSsoBuilderComponent implements JwtSsoBuilderConfig {
 	}
 
 	@Override
-	public boolean isFallbackToLtpa() {
-		return fallbackToLtpa;
+	public boolean isUseLtpaIfJwtAbsent() {
+		return useLtpaIfJwtAbsent;
 	}
 
 	@Override
@@ -107,10 +121,24 @@ public class JwtSsoBuilderComponent implements JwtSsoBuilderConfig {
 		return jwtBuilderRef;
 	}
 
-	/** {@inheritDoc} */
-	@Override
-	public String getJwtConsumerRef() {
-		return jwtConsumerRef;
+	// /** {@inheritDoc} */
+	// @Override
+	// public String getJwtConsumerRef() {
+	// return jwtConsumerRef;
+	// }
+
+	// we track the builder config so we can get the token expiration time
+	@org.osgi.service.component.annotations.Reference(service = JwtConfig.class, name = KEY_JWT_SERVICE, policy = ReferencePolicy.DYNAMIC, cardinality = ReferenceCardinality.MULTIPLE, policyOption = ReferencePolicyOption.RELUCTANT)
+	protected void setJwtConfig(org.osgi.framework.ServiceReference<JwtConfig> ref) {
+		synchronized (initlock) {
+			jwtServiceMapRef.putReference((String) ref.getProperty(CFG_KEY_ID), ref);
+		}
+	}
+
+	protected void unsetJwtConfig(org.osgi.framework.ServiceReference<JwtConfig> ref) {
+		synchronized (initlock) {
+			jwtServiceMapRef.removeReference((String) ref.getProperty(CFG_KEY_ID), ref);
+		}
 	}
 
 	// todo: remove if not needed
@@ -154,7 +182,7 @@ public class JwtSsoBuilderComponent implements JwtSsoBuilderConfig {
 	}
 
 	@Activate
-	protected void activate(Map<String, Object> properties, ComponentContext cc) {
+	public void activate(Map<String, Object> properties, ComponentContext cc) {
 		uniqueId = (String) properties.get(KEY_UNIQUE_ID);
 		process(properties);
 	}
@@ -180,187 +208,200 @@ public class JwtSsoBuilderComponent implements JwtSsoBuilderConfig {
 		setCookiePathToWebAppContextPath = (Boolean) props
 				.get(JwtSsoConstants.CFG_KEY_SETCOOKIEPATHTOWEBAPPCONTEXTPATH);
 		includeLtpaCookie = (Boolean) props.get(JwtSsoConstants.CFG_KEY_INCLUDELTPACOOKIE);
-		fallbackToLtpa = (Boolean) props.get(JwtSsoConstants.CFG_KEY_FALLBACKTOLTPA);
+		useLtpaIfJwtAbsent = (Boolean) props.get(JwtSsoConstants.CFG_USE_LTPA_IF_JWT_ABSENT);
 		cookieSecureFlag = (Boolean) props.get(JwtSsoConstants.CFG_KEY_COOKIESECUREFLAG);
 		jwtBuilderRef = JwtUtils.trimIt((String) props.get(JwtSsoConstants.CFG_KEY_JWTBUILDERREF));
+		isDefaultBuilder = false;
 		if (jwtBuilderRef == null) {
 			setJwtSsoBuilderDefaults();
+			isDefaultBuilder = true;
 		}
 		jwtConsumerRef = JwtUtils.trimIt((String) props.get(JwtSsoConstants.CFG_KEY_JWTCONSUMERREF));
 		cookieName = JwtUtils.trimIt((String) props.get(JwtSsoConstants.CFG_KEY_COOKIENAME));
-		if (tc.isEntryEnabled()) {
-			Tr.exit(tc, "process");
-		}
-	}
+        cookieName = (new ConfigUtils()).validateCookieName(cookieName, false);
+        if (tc.isEntryEnabled()) {
+            Tr.exit(tc, "process");
+        }
+    }
 
-	private void setJwtSsoBuilderDefaults() {
-		jwtBuilderRef = getId();
-		signatureAlgorithm = "RS256";
-		if (tc.isDebugEnabled()) {
-			Tr.debug(tc, "builder id = ", jwtBuilderRef);
-		}
-		issuerUtil = new IssuerUtil();
+    private void setJwtSsoBuilderDefaults() {
+        jwtBuilderRef = getId();
+        signatureAlgorithm = "RS256";
+        if (tc.isDebugEnabled()) {
+            Tr.debug(tc, "builder id = ", jwtBuilderRef);
+        }
+        issuerUtil = new IssuerUtil();
 
-	}
+    }
 
-	/** {@inheritDoc} */
-	@Override
-	public String getId() {
-		// TODO Auto-generated method stub
-		return getUniqueId();
-	}
+    /** {@inheritDoc} */
+    @Override
+    public String getId() {
+        // TODO Auto-generated method stub
+        return getUniqueId();
+    }
 
-	/** {@inheritDoc} */
-	@Override
-	public List<String> getAudiences() {
-		// TODO Auto-generated method stub
-		return null;
-	}
+    /** {@inheritDoc} */
+    @Override
+    public List<String> getAudiences() {
+        // TODO Auto-generated method stub
+        return null;
+    }
 
-	/** {@inheritDoc} */
-	@Override
-	public String getSignatureAlgorithm() {
-		// TODO Auto-generated method stub
-		return signatureAlgorithm;
-	}
+    /** {@inheritDoc} */
+    @Override
+    public String getSignatureAlgorithm() {
+        // TODO Auto-generated method stub
+        return signatureAlgorithm;
+    }
 
-	/** {@inheritDoc} */
-	@Override
-	public String getSharedKey() {
-		// TODO Auto-generated method stub
-		return null;
-	}
+    /** {@inheritDoc} */
+    @Override
+    public String getSharedKey() {
+        // TODO Auto-generated method stub
+        return null;
+    }
 
-	/** {@inheritDoc} */
-	@Override
-	public String getTrustStoreRef() {
-		// TODO Auto-generated method stub
-		return null;
-	}
+    /** {@inheritDoc} */
+    @Override
+    public String getTrustStoreRef() {
+        // TODO Auto-generated method stub
+        return null;
+    }
 
-	/** {@inheritDoc} */
-	@Override
-	public String getTrustedAlias() {
-		// TODO Auto-generated method stub
-		return null;
-	}
+    /** {@inheritDoc} */
+    @Override
+    public String getTrustedAlias() {
+        // TODO Auto-generated method stub
+        return null;
+    }
 
-	public String getUniqueId() {
-		// TODO Auto-generated method stub
-		return uniqueId;
-	}
+    public String getUniqueId() {
+        // TODO Auto-generated method stub
+        return uniqueId;
+    }
 
-	/** {@inheritDoc} */
-	@Override
-	public String getIssuerUrl() {
-		return getResolvedHostAndPortUrl();
+    /** {@inheritDoc} */
+    @Override
+    public String getIssuerUrl() {
+        return getResolvedHostAndPortUrl();
 
-	}
+    }
 
-	/** {@inheritDoc} */
-	@Override
-	public boolean isJwkEnabled() {
-		// TODO Auto-generated method stub
-		return false;
-	}
+    /** {@inheritDoc} */
+    @Override
+    public boolean isJwkEnabled() {
+        // TODO Auto-generated method stub
+        return false;
+    }
 
-	/** {@inheritDoc} */
-	@Override
-	public long getValidTime() {
-		// TODO Auto-generated method stub
-		return 0;
-	}
+    /** {@inheritDoc} */
+    @Override
+    public long getValidTime() {
+        long result = 0;
+        if (isDefaultBuilder) {
+            result = 2 * 3600;
+        } else {
+            boolean haveNull = jwtServiceMapRef.getReference(jwtBuilderRef) == null
+                    || jwtServiceMapRef.getReference(jwtBuilderRef).getProperty(JwtUtils.CFG_KEY_VALID) == null;
 
-	/** {@inheritDoc} */
-	@Override
-	public List<String> getClaims() {
-		// TODO Auto-generated method stub
-		return null;
-	}
+            result = (haveNull) ? 0
+                    : ((Long) jwtServiceMapRef.getReference(jwtBuilderRef).getProperty(JwtUtils.CFG_KEY_VALID))
+                            .longValue();
+        }
+        return result;
+    }
 
-	/** {@inheritDoc} */
-	@Override
-	public String getScope() {
-		// TODO Auto-generated method stub
-		return null;
-	}
+    /** {@inheritDoc} */
+    @Override
+    public List<String> getClaims() {
+        // TODO Auto-generated method stub
+        return null;
+    }
 
-	/** {@inheritDoc} */
-	@Override
-	public boolean getJti() {
-		// TODO Auto-generated method stub
-		return true;
-	}
+    /** {@inheritDoc} */
+    @Override
+    public String getScope() {
+        // TODO Auto-generated method stub
+        return null;
+    }
 
-	/** {@inheritDoc} */
-	@Override
-	public String getKeyStoreRef() {
-		// TODO Auto-generated method stub
-		return null;
-	}
+    /** {@inheritDoc} */
+    @Override
+    public boolean getJti() {
+        // TODO Auto-generated method stub
+        return false;
+    }
 
-	/** {@inheritDoc} */
-	@Override
-	public String getKeyAlias() {
-		// TODO Auto-generated method stub
-		return null;
-	}
+    /** {@inheritDoc} */
+    @Override
+    public String getKeyStoreRef() {
+        // TODO Auto-generated method stub
+        return null;
+    }
 
-	/** {@inheritDoc} */
-	@Override
-	public String getJwkJsonString() {
-		// TODO Auto-generated method stub
-		return null;
-	}
+    /** {@inheritDoc} */
+    @Override
+    public String getKeyAlias() {
+        // TODO Auto-generated method stub
+        return null;
+    }
 
-	/** {@inheritDoc} */
-	@Override
-	public JSONWebKey getJSONWebKey() {
-		// TODO Auto-generated method stub
-		return null;
-	}
+    /** {@inheritDoc} */
+    @Override
+    public String getJwkJsonString() {
+        // TODO Auto-generated method stub
+        return null;
+    }
 
-	/** {@inheritDoc} */
-	@Override
-	public long getJwkRotationTime() {
-		// TODO Auto-generated method stub
-		return 0;
-	}
+    /** {@inheritDoc} */
+    @Override
+    public JSONWebKey getJSONWebKey() {
+        // TODO Auto-generated method stub
+        return null;
+    }
 
-	/** {@inheritDoc} */
-	@Override
-	public int getJwkSigningKeySize() {
-		// TODO Auto-generated method stub
-		return 0;
-	}
+    /** {@inheritDoc} */
+    @Override
+    public long getJwkRotationTime() {
+        // TODO Auto-generated method stub
+        return 0;
+    }
 
-	/** {@inheritDoc} */
+    /** {@inheritDoc} */
+    @Override
+    public int getJwkSigningKeySize() {
+        // TODO Auto-generated method stub
+        return 0;
+    }
 
-	@Override
-	public String getResolvedHostAndPortUrl() {
-		return issuerUtil.getResolvedHostAndPortUrl(httpsendpointInfoMBean, httpendpointInfoMBean, serverInfoMBean,
-				uniqueId);
-		// TODO Auto-generated method stub
-	}
+    /** {@inheritDoc} */
 
-	/** {@inheritDoc} */
-	@Override
-	public PrivateKey getPrivateKey() {
-		// TODO Auto-generated method stub
-		return null;
-	}
+    @Override
+    public String getResolvedHostAndPortUrl() {
+        return issuerUtil.getResolvedHostAndPortUrl(httpsendpointInfoMBean, httpendpointInfoMBean, serverInfoMBean,
+                uniqueId);
+        // TODO Auto-generated method stub
+    }
 
-	/** {@inheritDoc} */
-	@Override
-	public PublicKey getPublicKey() {
-		// TODO Auto-generated method stub
-		return null;
-	}
+    /** {@inheritDoc} */
+    @Override
+    public PrivateKey getPrivateKey() {
+        // TODO Auto-generated method stub
+        return null;
+    }
 
-	@Override
-	public String getCookieName() {
-		// TODO Auto-generated method stub
-		return cookieName;
-	}
+    /** {@inheritDoc} */
+    @Override
+    public PublicKey getPublicKey() {
+        // TODO Auto-generated method stub
+        return null;
+    }
+
+    @Override
+    public String getCookieName() {
+        // TODO Auto-generated method stub
+        return cookieName;
+    }
 
 }

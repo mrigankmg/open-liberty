@@ -10,10 +10,14 @@ import java.util.regex.Pattern;
 import com.ibm.websphere.simplicity.log.Log;
 import com.ibm.ws.security.fat.common.Constants;
 import com.ibm.ws.security.fat.common.expectations.Expectation;
+import com.ibm.ws.security.fat.common.expectations.Expectations;
+import com.ibm.ws.security.fat.common.logging.CommonFatLoggingUtils;
 
 public class TestValidationUtils {
 
     private final Class<?> thisClass = TestValidationUtils.class;
+
+    private CommonFatLoggingUtils loggingUtils = new CommonFatLoggingUtils();
 
     /**
      * Logs the state of the test assertion and then invokes the JUnit assertTrue method to record the test "status"
@@ -59,13 +63,39 @@ public class TestValidationUtils {
         return false;
     }
 
+    public void validateResult(Object response, String currentAction, Expectations expectations) throws Exception {
+        String thisMethod = "validateResult";
+        loggingUtils.printMethodName(thisMethod, "Start of");
+
+        Log.info(thisClass, thisMethod, "currentAction is: " + currentAction);
+        if (expectations == null) {
+            Log.info(thisClass, thisMethod, "Expectations are null");
+            return;
+        }
+        try {
+            for (Expectation expectation : expectations.getExpectations()) {
+                expectation.validate(currentAction, response);
+            }
+        } catch (Exception e) {
+            Log.error(thisClass, thisMethod, e, "Error validating response");
+            throw e;
+        }
+        loggingUtils.printMethodName(thisMethod, "End of");
+    }
+
     public void validateStringContent(Expectation expected, String contentToValidate) throws Exception {
         if (expected == null) {
             throw new Exception("The provided expectation is null; the specified content cannot be validated.");
         }
         String checkType = expected.getCheckType();
 
-        if (Constants.STRING_CONTAINS.equals(checkType)) {
+        if (Constants.STRING_NULL.equals(checkType)) {
+            validateStringNull(expected, contentToValidate);
+        } else if (Constants.STRING_NOT_NULL.equals(checkType)) {
+            validateStringNotNull(expected, contentToValidate);
+        } else if (Constants.STRING_EQUALS.equals(checkType)) {
+            validateStringEquals(expected, contentToValidate);
+        } else if (Constants.STRING_CONTAINS.equals(checkType)) {
             validateStringContains(expected, contentToValidate);
         } else if (Constants.STRING_DOES_NOT_CONTAIN.equals(checkType)) {
             validateStringDoesNotContain(expected, contentToValidate);
@@ -76,6 +106,34 @@ public class TestValidationUtils {
         } else {
             throw new Exception("String comparison type (" + checkType + ") unknown. Check that the offending test case has coded its expectations correctly.");
         }
+    }
+
+    void validateStringNull(Expectation expected, String contentToValidate) {
+        boolean assertion = contentToValidate == null;
+
+        String failureSubMsg = "Expected value to be null, but received [" + contentToValidate + "]";
+        assertTrueAndLog("validateStringNull", expected.getFailureMsg() + " " + failureSubMsg, assertion);
+    }
+
+    void validateStringNotNull(Expectation expected, String contentToValidate) {
+        boolean assertion = contentToValidate != null;
+
+        String failureSubMsg = "Expected value not to be null, but it was.";
+        assertTrueAndLog("validateStringNotNull", expected.getFailureMsg() + " " + failureSubMsg, assertion);
+    }
+
+    void validateStringEquals(Expectation expected, String contentToValidate) {
+        String searchFor = expected.getValidationValue();
+        if (searchFor == null) {
+            validateStringNull(expected, contentToValidate);
+            return;
+        }
+        assertContentNotNull(contentToValidate, searchFor);
+
+        boolean assertion = searchFor.equals(contentToValidate);
+
+        String failureSubMsg = "Was expecting content to equal [" + searchFor + "] but received [" + contentToValidate + "]";
+        assertTrueAndLog("validateStringEquals", expected.getFailureMsg() + " " + failureSubMsg, assertion);
     }
 
     void validateStringContains(Expectation expected, String contentToValidate) {

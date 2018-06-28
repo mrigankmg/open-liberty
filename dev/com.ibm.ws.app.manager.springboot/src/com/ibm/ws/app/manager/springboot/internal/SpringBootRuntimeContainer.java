@@ -68,7 +68,7 @@ public class SpringBootRuntimeContainer implements ModuleRuntimeContainer {
 
         @Override
         public J2EEName getJ2EEName() {
-            return null;
+            return ((ExtendedApplicationInfo) moduleInfo.getApplicationInfo()).getMetaData().getJ2EEName();
         }
 
     }
@@ -141,6 +141,12 @@ public class SpringBootRuntimeContainer implements ModuleRuntimeContainer {
                             break;
                         case MISSING_SERVLET_FEATURE:
                             msgKey = "error.missing.servlet";
+                            break;
+                        case MISSING_WEBSOCKET_FEATURE:
+                            msgKey = "error.missing.websocket";
+                            break;
+                        case WEBFLUX_NOT_SUPPORTED:
+                            msgKey = "error.webflux.not.supported";
                             break;
                         default:
                             break;

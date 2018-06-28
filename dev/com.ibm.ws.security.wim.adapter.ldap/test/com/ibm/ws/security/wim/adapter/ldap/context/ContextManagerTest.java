@@ -14,9 +14,11 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNotSame;
+import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
+import java.net.ServerSocket;
 import java.util.HashSet;
 import java.util.Set;
 
@@ -24,6 +26,7 @@ import javax.naming.Context;
 import javax.naming.ContextNotEmptyException;
 import javax.naming.NameAlreadyBoundException;
 import javax.naming.NameNotFoundException;
+import javax.naming.NamingException;
 import javax.naming.NoPermissionException;
 import javax.naming.directory.Attributes;
 import javax.naming.directory.BasicAttribute;
@@ -498,6 +501,47 @@ public class ContextManagerTest {
     }
 
     /**
+     * Test that when the context pool is enabled context failure handling results in
+     * expected behavior for recreating the context pool.
+     */
+    @Test
+    public void getDirContext_ContextPoolEnabled_ContextFailure() throws Exception {
+        ContextManager cm = new ContextManager();
+        cm.setPrimaryServer("localhost", primaryLdapServer.getLdapServer().getPort());
+        SerializableProtectedString bindPassword = new SerializableProtectedString(EmbeddedApacheDS.getBindPassword().toCharArray());
+        cm.setSimpleCredentials(EmbeddedApacheDS.getBindDN(), bindPassword);
+        cm.setContextPool(true, 1, 1, 0, 10000l, 1l);
+        cm.initialize();
+
+        /*
+         * Get a context from the pool. This will populate the pool.
+         *
+         * We will release the context so that if the next step doesn't generate
+         * a new pool, we will retrieving this one.
+         */
+        TimedDirContext ctx1 = cm.getDirContext();
+        cm.releaseDirContext(ctx1);
+        Thread.sleep(1100);
+
+        /*
+         * Simulate a failure on the first context. A new context pool will be created
+         * since it is more than 1 second after the initial context pool creation.
+         */
+        TimedDirContext ctx2 = cm.reCreateDirContext(ctx1, "some failure");
+        assertTrue("Expected new context pool with new timestamp.", ctx1.getPoolTimestamp() < ctx2.getPoolTimestamp());
+        assertNotSame("Expected new context instance.", ctx1, ctx2);
+        cm.releaseDirContext(ctx2);
+
+        /*
+         * Simulate another failure on the first context. This will NOT create a new context pool since it
+         * uses the first context (from the original context pool which has been replaced). Instead, it
+         * will grab a context from the new pool.
+         */
+        TimedDirContext ctx3 = cm.reCreateDirContext(ctx1, "some failure");
+        assertSame("Expected same context instance.", ctx2, ctx3);
+    }
+
+    /**
      * Ensure that when the context pool is enabled that expired contexts are not
      * returned from {@link ContextManager#getDirContext()}.
      */
@@ -635,6 +679,7 @@ public class ContextManagerTest {
         cm.setSSLAlias("sslAlias");
         cm.setSSLEnabled(true);
         cm.setConnectTimeout(12345l);
+        cm.setReadTimeout(12345l);
         cm.addFailoverServer("localhost", failoverLdapServer.getLdapServer().getPort());
         cm.setContextPool(true, 0, 1, 3, 1000l, 2000l);
         cm.setWriteToSecondary(true);
@@ -650,6 +695,7 @@ public class ContextManagerTest {
         assertTrue("Did not find SSL Alias in toString: " + toString, toString.contains("iSSLAlias=sslAlias"));
         assertTrue("Did not find SSL Enabled in toString: " + toString, toString.contains("iSSLEnabled=true"));
         assertTrue("Did not find Connect Timeout in toString: " + toString, toString.contains("iConnectTimeout=12345"));
+        assertTrue("Did not find Read Timeout in toString: " + toString, toString.contains("iReadTimeout=12345"));
         assertTrue("Did not find Primary Server in toString: " + toString, toString.contains("iPrimaryServer=localhost:" + primaryLdapServer.getLdapServer().getPort()));
         assertTrue("Did not find Failover Servers in toString: " + toString,
                    toString.contains("iFailoverServers=[localhost:" + failoverLdapServer.getLdapServer().getPort() + "]"));
@@ -663,5 +709,109 @@ public class ContextManagerTest {
         assertTrue("Did not find Query Interval in toString: " + toString, toString.contains("iQueryInterval=3000"));
         assertTrue("Did not find Referral in toString: " + toString, toString.contains("iReferral=ignore"));
         assertTrue("Did not find Return to Primary in toString: " + toString, toString.contains("iReturnToPrimary=true"));
+    }
+
+    /**
+     * Test setting the connection timeout. For JNDI this appears to cover the entire amount of time it
+     * takes to bind (open connection and read the bind response), not just connect. Notice that the
+     * error message mentions read timeout, but that we did not set it. It must be setting the read timeout
+     * from the connect timeout when doing a bind (which creates a new connection to the LDAP server).
+     *
+     * I did try to get a root cause of SocketTimeoutException by using a non-routable IP, but it was flaky and
+     * sometimes the network returned no route to host before the timeout could occur.
+     *
+     * @throws Exception If the test fails for some reason.
+     */
+    @Test
+    public void connectTimeout() throws Exception {
+
+        ServerSocket serverSocket = new ServerSocket(0);
+
+        try {
+            /*
+             * Configure the context manager with a 100 ms connect timeout.
+             */
+            long expectedTimeout = 100L;
+            ContextManager cm = new ContextManager();
+            cm.setPrimaryServer("localhost", serverSocket.getLocalPort());
+            cm.setContextPool(false, null, null, null, null, null);
+            cm.setConnectTimeout(expectedTimeout);
+            cm.initialize();
+
+            long time = System.currentTimeMillis();
+            try {
+                cm.createDirContext(USER_DN, "password".getBytes());
+                fail("Expected NamingException.");
+            } catch (NamingException e) {
+                // javax.naming.NamingException: LDAP response read timed out, timeout used:100ms.
+                time = System.currentTimeMillis() - time;
+                assertTrue("Expected connect timeout to be " + expectedTimeout + " ms.", time >= expectedTimeout && time <= (expectedTimeout + 100));
+            }
+
+            /*
+             * Configure the context manager with a 500 ms connect timeout.
+             */
+            expectedTimeout = 500L;
+            cm.setConnectTimeout(expectedTimeout);
+            cm.initialize();
+
+            time = System.currentTimeMillis();
+            try {
+                cm.createDirContext(USER_DN, "password".getBytes());
+                fail("Expected NamingException.");
+            } catch (NamingException e) {
+                // javax.naming.NamingException: LDAP response read timed out, timeout used:500ms.
+                time = System.currentTimeMillis() - time;
+                assertTrue("Expected connect timeout to be " + expectedTimeout + " millisecond.", time >= expectedTimeout && time <= (expectedTimeout + 100));
+            }
+        } finally {
+            serverSocket.close();
+        }
+    }
+
+    /**
+     * Test setting the read timeout.
+     *
+     * @throws Exception If the test fails for some reason.
+     */
+    @Test
+    public void readTimeout() throws Exception {
+
+        /*
+         * Configure the context manager with a 100 ms read timeout.
+         */
+        long expectedTimeout = 100L;
+        ContextManager cm = new ContextManager();
+        cm.setPrimaryServer("localhost", primaryLdapServer.getLdapServer().getPort());
+        cm.setContextPool(false, null, null, null, null, null);
+        cm.setReadTimeout(expectedTimeout);
+        cm.initialize();
+
+        TimedDirContext ctx = cm.createDirContext(USER_DN, "password".getBytes());
+
+        long time = System.currentTimeMillis();
+        try {
+            ctx.search(BASE_ENTRY, "objectclass=*", null);
+        } catch (NamingException e) {
+            time = System.currentTimeMillis() - time;
+            assertTrue("Expected connect timeout to be " + expectedTimeout + " millisecond.", time >= expectedTimeout && time <= (expectedTimeout + 100));
+        }
+        ctx.close();
+
+        /*
+         * Configure the context manager with a 500 ms read timeout.
+         */
+        expectedTimeout = 500L;
+        cm.setReadTimeout(expectedTimeout);
+        cm.initialize();
+
+        ctx = cm.createDirContext(USER_DN, "password".getBytes());
+        time = System.currentTimeMillis();
+        try {
+            ctx.search(BASE_ENTRY, "objectclass=*", null);
+        } catch (NamingException e) {
+            time = System.currentTimeMillis() - time;
+            assertTrue("Expected connect timeout to be " + expectedTimeout + " millisecond.", time >= expectedTimeout && time <= (expectedTimeout + 100));
+        }
     }
 }

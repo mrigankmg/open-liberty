@@ -66,7 +66,7 @@ import org.apache.myfaces.util.ExternalSpecifications;
  *
  * @author Manfred Geiler (latest modification by $Author: paulnicolucci $)
  * @author Anton Koinov
- * @version $Revision: 1827505 $ $Date: 2018-03-22 11:08:26 -0400 (Thu, 22 Mar 2018) $
+ * @version $Revision: 1828254 $ $Date: 2018-04-03 12:33:38 -0400 (Tue, 03 Apr 2018) $
  */
 public final class ServletExternalContextImpl extends ServletExternalContextImplBase
 {
@@ -947,11 +947,17 @@ public final class ServletExternalContextImpl extends ServletExternalContextImpl
             }
         }        
 
+        boolean hasParams = paramMap != null && paramMap.size()>0;
+
+        if (!hasParams && fragment == null) {
+            return baseUrl;
+        }
+
         // start building the new URL
         StringBuilder newUrl = new StringBuilder(baseUrl);
 
         //now add the updated param list onto the url
-        if (paramMap != null && paramMap.size()>0)
+        if (hasParams)
         {
             boolean isFirstPair = true;
             for (Map.Entry<String, List<String>> pair : paramMap.entrySet())
@@ -989,7 +995,8 @@ public final class ServletExternalContextImpl extends ServletExternalContextImpl
         //add the fragment back on (if any)
         if (fragment != null)
         {
-            newUrl.append(URL_FRAGMENT_SEPERATOR + fragment);
+            newUrl.append(URL_FRAGMENT_SEPERATOR);
+            newUrl.append(fragment);
         }
 
         return newUrl.toString();

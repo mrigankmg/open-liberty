@@ -12,7 +12,6 @@ Subsystem-Name: Internal Java RESTful Services 2.1
  com.ibm.websphere.appserver.javax.mail-1.6, \
  com.ibm.websphere.appserver.globalhandler-1.0, \
  com.ibm.websphere.appserver.javax.annotation-1.3; apiJar=false, \
- com.ibm.websphere.appserver.json-1.0, \
  com.ibm.websphere.appserver.javaeeCompatible-8.0
 -bundles=com.ibm.websphere.appserver.api.jaxrs20; location:="dev/api/ibm/,lib/", \
  com.ibm.ws.org.apache.xml.resolver.1.2, \
@@ -28,7 +27,7 @@ Subsystem-Name: Internal Java RESTful Services 2.1
  com.ibm.ws.org.apache.cxf.cxf.tools.common.3.2, \
  com.ibm.ws.org.apache.cxf.cxf.tools.wadlto.jaxrs.3.2, \
  com.ibm.ws.org.apache.ws.xmlschema.core.2.0.3, \
- com.ibm.websphere.javaee.jaxrs.2.1; location:="dev/api/spec/,lib/", \
+ com.ibm.websphere.javaee.jaxrs.2.1; location:="dev/api/spec/,lib/"; mavenCoordinates="javax.ws.rs:javax.ws.rs-api:2.1", \
  com.ibm.ws.jaxrs.2.0.tools, \
  com.ibm.ws.jaxrs.2.0.web, \
  com.ibm.ws.jaxrs.2.0.server, \
@@ -37,5 +36,5 @@ Subsystem-Name: Internal Java RESTful Services 2.1
  bin/jaxrs/wadl2java, \
  bin/jaxrs/wadl2java.bat, \
  bin/jaxrs/tools/wadl2java.jar
-kind=beta
+kind=ga
 edition=core

@@ -13,6 +13,7 @@ IBM-API-Package: javax.decorator;  type="spec", \
  javax.enterprise.inject.literal;  type="spec", \
  javax.enterprise.inject.spi;  type="spec", \
  javax.enterprise.inject.spi.configurator;  type="spec", \
+ javax.enterprise.inject.se;  type="spec", \
  javax.enterprise.util;  type="spec", \
  javax.inject;  type="spec", \
  javax.interceptor;  type="spec", \
@@ -60,11 +61,11 @@ Subsystem-Name: Contexts and Dependency Injection 2.0
  com.ibm.ws.cdi.weld, \
  com.ibm.ws.cdi.internal, \
  com.ibm.ws.cdi.2.0.weld, \
- com.ibm.websphere.javaee.jstl.1.2; apiJar=false; location:="dev/api/spec/,lib/", \
- com.ibm.websphere.javaee.websocket.1.1; apiJar=false; location:="dev/api/spec/,lib/", \
+ com.ibm.websphere.javaee.jstl.1.2; apiJar=false; location:="dev/api/spec/,lib/"; mavenCoordinates="javax.servlet:jstl:1.2", \
+ com.ibm.websphere.javaee.websocket.1.1; apiJar=false; location:="dev/api/spec/,lib/"; mavenCoordinates="javax.websocket:javax.websocket-api:1.1", \
  com.ibm.ws.cdi.interfaces
 -jars=com.ibm.websphere.appserver.thirdparty.cdi-2.0; location:="dev/api/third-party/,lib/"
 -files=dev/api/ibm/schema/ibm-managed-bean-bnd_1_0.xsd, \
  dev/api/ibm/schema/ibm-managed-bean-bnd_1_1.xsd
-kind=beta
+kind=ga
 edition=core

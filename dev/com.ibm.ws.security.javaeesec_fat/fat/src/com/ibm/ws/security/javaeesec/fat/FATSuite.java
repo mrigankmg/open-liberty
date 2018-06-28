@@ -18,9 +18,7 @@ import componenttest.custom.junit.runner.AlwaysPassesTest;
 
 @RunWith(Suite.class)
 @SuiteClasses({
-
                 AlwaysPassesTest.class,
-                //                CustomFormHttpAuthenticationMechanismTest.class,
                 BasicAuthenticationMechanismTest.class,
                 RememberMeTest.class,
                 AutoApplySessionTest.class,
@@ -28,10 +26,8 @@ import componenttest.custom.junit.runner.AlwaysPassesTest;
                 LdapIdentityStoreDeferredSettingsTest.class,
                 MultipleIdentityStoreBasicTest.class,
                 MultipleIdentityStoreApplCustomTest.class,
-                MultipleIdentityStoreFormRedirectTest.class,
-                MultipleIdentityStoreFormForwardTest.class,
-                MultipleIdentityStoreCustomFormRedirectTest.class,
-                MultipleIdentityStoreCustomFormForwardTest.class,
+                MultipleIdentityStoreFormTest.class,
+                MultipleIdentityStoreCustomFormTest.class,
                 NoJavaEESecFormTest.class,
                 MultipleIdentityStoreFormPostTest.class,
                 MultipleIdentityStoreCustomFormPostTest.class,
@@ -45,17 +41,26 @@ import componenttest.custom.junit.runner.AlwaysPassesTest;
                 HttpAuthenticationMechanismDBHashTest.class,
                 HttpAuthenticationMechanismDBHashBeanTest.class,
                 HttpAuthenticationMechanismDBHashNoConfigTest.class,
+                HttpAuthenticationMechanismDBAnnotationTest.class,
                 ProgrammaticTest.class,
-                MultipleModuleTest.class,
+                MultipleModuleNoExpandTest.class,
+                MultipleModuleExpandTest.class,
                 SecurityContextTest.class,
                 SecurityContextJaxRSTest.class,
                 SecurityContextEJBTest.class,
                 DatabaseIdentityStoreDeferredSettingsTest.class,
-                EAREJBModuleTest.class,
+                DatabaseIdentityStoreImmediateSettingsTest.class,
+                EJBModuleTestProtectedServlet.class,
+                EJBModuleTestUnprotectedServlet.class,
                 MultipleModuleGlobalLoginTest.class,
-                MultipleModuleRunAsTest.class,
+                MultipleModuleDBRunAsTest.class,
                 ScopedTest.class,
+                MultipleModuleRunAsTest.class,
+                FeatureTest.class,
+                EJBModuleRealmTest.class,
                 CustomIdentityStoreHandlerTest.class,
+                MultipleModuleGlobalClientCertTest.class,
+                MultipleModuleGlobalClientCertFailOverTest.class,
                 NoIdentityStoreTest.class
 })
 

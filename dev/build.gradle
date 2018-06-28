@@ -19,9 +19,11 @@ ext {
   buildImage = project(':build.image')
 }
 
+
 subprojects {
   plugins.apply 'java'
   def bndProject = bndWorkspace.getProject(name)
+
   if (bndProject != null) {
     plugins.apply 'biz.aQute.bnd'
   } else {
@@ -34,12 +36,22 @@ subprojects {
   /* For Java 9 builds, set the --release compiler flag to keep bootclasspath in sync */
   tasks.withType(JavaCompile) {
     doFirst {
-      if(JavaVersion.current().isJava9Compatible()) {
+      if(JavaVersion.current().isJava9Compatible() && bndis('javac.args.release')) {
         def release = sourceCompatibility
         if(sourceCompatibility < '9')
           release = sourceCompatibility.substring(2);
         println "Compiling with --release=" + release
         options.compilerArgs.addAll([ '--release', release])
+      }
+    }
+  }
+  tasks.withType(Javadoc) {
+    doFirst {
+      // Starting with JDK 9.0.4 the javadoc compiler started to striclty enforce proper HTML
+      // syntax and other breaking changes.  Fixing all of these ocurrances would take far too
+      // long and be a poor use of time, so we will disable these checks for JDK9 and up
+      if(JavaVersion.current().isJava9Compatible()) {
+        options.addStringOption('Xdoclint:none', '-quiet')
       }
     }
   }

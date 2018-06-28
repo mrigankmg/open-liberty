@@ -15,17 +15,20 @@ import javax.xml.bind.annotation.XmlElement;
 
 /**
  * Defines an HTTP endpoint (host/port mapping)
- * 
+ *
  * @author Tim Burns
- * 
+ *
  */
 public class HttpEndpoint extends ConfigElement {
 
     @XmlElement(name = "tcpOptions")
     private TcpOptions tcpOptions;
+    @XmlElement(name = "sslOptions")
+    private SslOptions sslOptions;
     private String host;
     private Integer httpPort;
     private Integer httpsPort;
+    private String protocolVersion;
 
     /**
      * @return TCP options for this configuration
@@ -35,6 +38,16 @@ public class HttpEndpoint extends ConfigElement {
             this.tcpOptions = new TcpOptions();
         }
         return this.tcpOptions;
+    }
+
+    /**
+     * @return Ssl options for this configuration
+     */
+    public SslOptions getSslOptions() {
+        if (this.sslOptions == null) {
+            this.sslOptions = new SslOptions();
+        }
+        return this.sslOptions;
     }
 
     /**
@@ -82,6 +95,21 @@ public class HttpEndpoint extends ConfigElement {
         this.httpsPort = httpsPort;
     }
 
+    /**
+     * @return the protocolVersion for this entry
+     */
+    public String getProtocolVersion() {
+        return this.protocolVersion;
+    }
+
+    /**
+     * @param protocolVersion for this entry
+     */
+    @XmlAttribute
+    public void setProtocolVersion(String protocolVersion) {
+        this.protocolVersion = ConfigElement.getValue(protocolVersion);
+    }
+
     @Override
     public String toString() {
         StringBuffer buf = new StringBuffer("HttpEndpoint{");
@@ -92,8 +120,12 @@ public class HttpEndpoint extends ConfigElement {
             buf.append("httpPort=\"" + this.httpPort + "\" ");
         if (this.httpsPort != null)
             buf.append("httpsPort=\"" + this.httpsPort + "\" ");
+        if (this.protocolVersion != null)
+            buf.append("protocolVersion=\"" + this.protocolVersion + "\" ");
         if (this.tcpOptions != null)
             buf.append(tcpOptions.toString());
+        if (this.sslOptions != null)
+            buf.append(sslOptions.toString());
 
         buf.append("}");
         return buf.toString();

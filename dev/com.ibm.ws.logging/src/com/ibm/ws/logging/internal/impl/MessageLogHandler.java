@@ -15,7 +15,6 @@ import java.util.List;
 import com.ibm.ws.logging.collector.CollectorConstants;
 import com.ibm.ws.logging.collector.Formatter;
 import com.ibm.ws.logging.data.GenericData;
-import com.ibm.ws.logging.data.LogTraceData;
 import com.ibm.ws.logging.internal.impl.BaseTraceService.TraceWriter;
 import com.ibm.wsspi.collector.manager.SynchronousHandler;
 
@@ -26,7 +25,7 @@ public class MessageLogHandler extends JsonLogHandler implements SynchronousHand
     public static final String COMPONENT_NAME = "com.ibm.ws.logging.internal.impl.MessageLogHandler";
 
     private String format = LoggingConstants.DEFAULT_MESSAGE_FORMAT;
-    private BaseTraceFormatter formatter = null;
+    private BaseTraceFormatter basicFormatter = null;
 
     public MessageLogHandler(String serverName, String wlpUserDir, List<String> sourcesList) {
         super(serverName, wlpUserDir, sourcesList);
@@ -53,12 +52,10 @@ public class MessageLogHandler extends JsonLogHandler implements SynchronousHand
          * Knowing that it is a *Data object, we can figure what type of source it is.
          */
         GenericData genData = null;
-
-        //check if event is a LogTraceData, if it is then we must extract the genericData.
-        if (event instanceof LogTraceData) {
-            genData = ((LogTraceData) event).getGenData();
-        } else if (event instanceof GenericData) {
+        if (event instanceof GenericData) {
             genData = (GenericData) event;
+        } else {
+            throw new IllegalArgumentException("event not an instance of GenericData");
         }
 
         String eventSourceType = getSourceTypeFromDataObject(genData);
@@ -69,12 +66,8 @@ public class MessageLogHandler extends JsonLogHandler implements SynchronousHand
             }
             messageOutput = genData.getJsonMessage();
 
-            if (messageOutput == null) {
-                messageOutput = (String) formatEvent(eventSourceType, CollectorConstants.MEMORY, event, null, MAXFIELDLENGTH);
-            }
-
-        } else if (currFormat.equals(LoggingConstants.DEFAULT_MESSAGE_FORMAT) && formatter != null) {
-            messageOutput = formatter.messageLogFormat(genData);
+        } else if (currFormat.equals(LoggingConstants.DEFAULT_MESSAGE_FORMAT) && basicFormatter != null) {
+            messageOutput = basicFormatter.messageLogFormat(genData);
 
         }
         if (messageOutput != null && traceWriter != null) {
@@ -85,11 +78,13 @@ public class MessageLogHandler extends JsonLogHandler implements SynchronousHand
 
     /**
      * Set BaseTraceFormatter passed from BaseTraceService
+     * This formatter is used to format the BASIC log events
+     * that pass through
      *
      * @param formatter the BaseTraceFormatter to use
      */
-    public void setFormatter(BaseTraceFormatter formatter) {
-        this.formatter = formatter;
+    public void setBasicFormatter(BaseTraceFormatter formatter) {
+        this.basicFormatter = formatter;
     }
 
     /**

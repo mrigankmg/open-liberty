@@ -15,12 +15,9 @@ import java.util.logging.LogRecord;
 
 import com.ibm.websphere.ras.Tr;
 import com.ibm.websphere.ras.TraceComponent;
-import com.ibm.ws.ffdc.annotation.FFDCIgnore;
 import com.ibm.ws.logging.RoutedMessage;
-import com.ibm.ws.logging.WsTraceHandler;
 import com.ibm.ws.logging.collector.CollectorJsonHelpers;
 import com.ibm.ws.logging.collector.LogFieldConstants;
-import com.ibm.ws.logging.data.GenericData;
 import com.ibm.ws.logging.data.KeyValuePairList;
 import com.ibm.ws.logging.data.LogTraceData;
 import com.ibm.ws.logging.internal.WsLogRecord;
@@ -30,7 +27,7 @@ import com.ibm.ws.logging.utils.SequenceNumber;
 import com.ibm.wsspi.collector.manager.BufferManager;
 import com.ibm.wsspi.collector.manager.Source;
 
-public class TraceSource implements Source, WsTraceHandler {
+public class TraceSource implements Source {
     private static final TraceComponent tc = Tr.register(TraceSource.class);
 
     private final String sourceName = "com.ibm.ws.logging.source.trace";
@@ -96,81 +93,78 @@ public class TraceSource implements Source, WsTraceHandler {
         }
     }
 
-    /** {@inheritDoc} */
-    @Override
-    public void publish(RoutedMessage routedMessage) {
-        //Publish the message if it is not coming from a handler thread
-        if (!ThreadLocalHandler.get()) {
-            if (routedMessage.getLogRecord() != null && bufferMgr != null) {
-                bufferMgr.add(parse(routedMessage, null));
-            }
-        }
-    }
-
     public LogTraceData parse(RoutedMessage routedMessage, Object id) {
 
-        GenericData genData = new GenericData();
+        LogTraceData traceData = new LogTraceData();
         LogRecord logRecord = routedMessage.getLogRecord();
-        String verboseMessage = routedMessage.getFormattedVerboseMsg();
-
-        if (verboseMessage == null) {
-            genData.addPair(LogFieldConstants.MESSAGE, logRecord.getMessage());
-        } else {
-            genData.addPair(LogFieldConstants.MESSAGE, verboseMessage);
-        }
 
         long datetimeValue = logRecord.getMillis();
-        genData.addPair(LogFieldConstants.IBM_DATETIME, datetimeValue);
-        genData.addPair(LogFieldConstants.IBM_THREADID, logRecord.getThreadID());
-        genData.addPair(LogFieldConstants.MODULE, logRecord.getLoggerName());
-        genData.addPair(LogFieldConstants.SEVERITY, LogFormatUtils.mapLevelToType(logRecord));
-        genData.addPair(LogFieldConstants.LOGLEVEL, LogFormatUtils.mapLevelToRawType(logRecord));
-        genData.addPair(LogFieldConstants.IBM_METHODNAME, logRecord.getSourceMethodName());
-        genData.addPair(LogFieldConstants.IBM_CLASSNAME, logRecord.getSourceClassName());
-        String sequenceNum = sequenceNumber.next(datetimeValue);
-        genData.addPair(LogFieldConstants.IBM_SEQUENCE, sequenceNum);
-
-        genData.addPair(LogFieldConstants.LEVELVALUE, logRecord.getLevel().intValue());
+        traceData.setDatetime(datetimeValue);
+        traceData.setMessageId(null);
+        traceData.setThreadId(logRecord.getThreadID());
+        traceData.setModule(logRecord.getLoggerName());
+        traceData.setSeverity(LogFormatUtils.mapLevelToType(logRecord));
+        traceData.setLoglevel(LogFormatUtils.mapLevelToRawType(logRecord));
+        traceData.setMethodName(logRecord.getSourceMethodName());
+        traceData.setClassName(logRecord.getSourceClassName());
+        traceData.setLevelValue(logRecord.getLevel().intValue());
 
         String threadName = Thread.currentThread().getName();
-        genData.addPair(LogFieldConstants.THREADNAME, threadName);
+        traceData.setThreadName(threadName);
 
-        if (id != null) {
-            Integer objid = System.identityHashCode(id);
-            genData.addPair(LogFieldConstants.OBJECT_ID, objid);
-        }
         WsLogRecord wsLogRecord = getWsLogRecord(logRecord);
-
+        //Extensions KVP calculated below, but needs to bet set in the correct 'order' further below
+        KeyValuePairList extensions = null;
         if (wsLogRecord != null) {
-            genData.addPair(LogFieldConstants.CORRELATION_ID, wsLogRecord.getCorrelationId());
-            genData.addPair(LogFieldConstants.ORG, wsLogRecord.getOrganization());
-            genData.addPair(LogFieldConstants.PRODUCT, wsLogRecord.getProduct());
-            genData.addPair(LogFieldConstants.COMPONENT, wsLogRecord.getComponent());
-        }
-
-        if (logRecord instanceof WsLogRecord) {
-            if (((WsLogRecord) logRecord).getExtensions() != null) {
-                KeyValuePairList extensions = new KeyValuePairList(LogFieldConstants.EXTENSIONS_KVPL);
-                Map<String, String> extMap = ((WsLogRecord) logRecord).getExtensions();
+            traceData.setCorrelationId(wsLogRecord.getCorrelationId());
+            traceData.setOrg(wsLogRecord.getOrganization());
+            traceData.setProduct(wsLogRecord.getProduct());
+            traceData.setComponent(wsLogRecord.getComponent());
+            if (wsLogRecord.getExtensions() != null) {
+                extensions = new KeyValuePairList(LogFieldConstants.EXTENSIONS_KVPL);
+                Map<String, String> extMap = wsLogRecord.getExtensions();
                 for (Map.Entry<String, String> entry : extMap.entrySet()) {
                     CollectorJsonHelpers.handleExtensions(extensions, entry.getKey(), entry.getValue());
                 }
-                genData.addPairs(extensions);
             }
+        } else {
+            traceData.setCorrelationId(null);
+            traceData.setOrg(null);
+            traceData.setProduct(null);
+            traceData.setComponent(null);
+            extensions = null;
         }
-        genData.setSourceType(sourceName);
-        LogTraceData traceData = new LogTraceData(genData);
-        traceData.setLevelValue(logRecord.getLevel().intValue());
+
+        String sequenceNum = sequenceNumber.next(datetimeValue);
+        traceData.setSequence(sequenceNum);
+
+        traceData.setThrowable(null);
+        traceData.setThrowableLocalized(null);
+
+        String verboseMessage = routedMessage.getFormattedVerboseMsg();
+        if (verboseMessage == null) {
+            traceData.setMessage(logRecord.getMessage());
+        } else {
+            traceData.setMessage(verboseMessage);
+        }
+
+        traceData.setFormattedMsg(null);
+
+        traceData.setExtensions(extensions);
+
+        if (id != null) {
+            int objid = System.identityHashCode(id);
+            traceData.setObjectId(objid);
+        } else {
+            // cannot pass null to traceData.setObjectId(int i)
+        }
+
+        traceData.setSourceType(sourceName);
 
         return traceData;
     }
 
-    @FFDCIgnore(value = { ClassCastException.class })
     private WsLogRecord getWsLogRecord(LogRecord logRecord) {
-        try {
-            return (WsLogRecord) logRecord;
-        } catch (ClassCastException ex) {
-            return null;
-        }
+        return (logRecord instanceof WsLogRecord) ? (WsLogRecord) logRecord : null;
     }
 }

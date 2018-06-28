@@ -17,6 +17,8 @@ import java.net.URLEncoder;
 import java.security.AccessController;
 import java.security.PrivilegedActionException;
 import java.security.PrivilegedExceptionAction;
+import java.util.ArrayList;
+import java.util.Map;
 import java.util.regex.Pattern;
 
 import javax.servlet.http.HttpServletRequest;
@@ -304,11 +306,8 @@ public class WebUtils {
 
     /**
      * Drill down through any possible HttpServletRequestWrapper objects.
-     *
-     * @param sr
-     * @return
      */
-    private HttpServletRequest getWrappedServletRequestObject(HttpServletRequest sr) {
+    public HttpServletRequest getWrappedServletRequestObject(HttpServletRequest sr) {
         if (sr instanceof HttpServletRequestWrapper) {
             HttpServletRequestWrapper w = (HttpServletRequestWrapper) sr;
             // make sure we drill all the way down to an
@@ -325,15 +324,16 @@ public class WebUtils {
     public static String stripSecretsFromUrl(String orig, String[] secretStrings) {
         String retVal = orig;
 
-        if (secretStrings==null || secretStrings.length==0) {
+        if (secretStrings == null || secretStrings.length == 0) {
             return orig;
         }
-        for (int i=0; i<secretStrings.length; i++) {
+        for (int i = 0; i < secretStrings.length; i++) {
             retVal = stripSecretFromUrl(retVal, secretStrings[i]);
         }
 
         return retVal;
     }
+
     //
     // stripClientSecretFromUrl 
     // this method is used to transform a URL or parameter string for tracing
@@ -341,52 +341,88 @@ public class WebUtils {
     //
     @Trivial
     public static String stripSecretFromUrl(String orig, String secretString) {
-      if (secretString==null || secretString.length()==0) {
-          return orig;
-      }
-      String retVal = orig;
-      String SECRETequals=secretString+"=";
-
-      int SECRETequalsLen=SECRETequals.length();
-
-      if (orig != null && orig.length() > SECRETequalsLen) {
-        if (orig.indexOf(SECRETequals) > -1) {
-          java.lang.StringBuffer sb = null;
-          int i = 0;
-          // http://localhost/path?client_secret=pw
-          //                      ^ 
-          if ((i=orig.indexOf("?"))>-1) {
-              sb = new java.lang.StringBuffer(orig.substring(0,i+1));
-              if (orig.length() > i+1) {
-                  orig=orig.substring(i+1);
-              }
-          } else {
-              sb = new java.lang.StringBuffer();
-          }
-
-          // client_secret=pw&abc=123
-          //                 ^  
-          String [] strings = orig.split("&");
-          int numStrings = strings.length;
-
-          String SECRETregex = SECRETequals+".*";
-          String SECRETreplace = SECRETequals+"*****";
-          for (String entry: strings) {
-            --numStrings;
-            if (entry.startsWith(SECRETequals) && entry.length()>SECRETequalsLen) {
-              entry = entry.replaceAll(SECRETregex, SECRETreplace);
-              sb.append(entry);
-            } else {
-              sb.append(entry);
-            }
-            if (numStrings > 0) {
-              sb.append("&");
-            }
-          }
-          retVal = sb.toString();
+        if (secretString == null || secretString.length() == 0) {
+            return orig;
         }
-      }
-      return retVal;
+        String retVal = orig;
+        String SECRETequals = secretString + "=";
+
+        int SECRETequalsLen = SECRETequals.length();
+
+        if (orig != null && orig.length() > SECRETequalsLen) {
+            if (orig.indexOf(SECRETequals) > -1) {
+                StringBuffer sb = null;
+                int i = 0;
+                // http://localhost/path?client_secret=pw
+                //                      ^ 
+                if ((i = orig.indexOf("?")) > -1) {
+                    sb = new StringBuffer(orig.substring(0, i + 1));
+                    if (orig.length() > i + 1) {
+                        orig = orig.substring(i + 1);
+                    }
+                } else {
+                    sb = new StringBuffer();
+                }
+
+                // client_secret=pw&abc=123
+                //                 ^  
+                String[] strings = orig.split("&");
+                int numStrings = strings.length;
+
+                String SECRETregex = SECRETequals + ".*";
+                String SECRETreplace = SECRETequals + "*****";
+                for (String entry : strings) {
+                    --numStrings;
+                    if (entry.startsWith(SECRETequals) && entry.length() > SECRETequalsLen) {
+                        entry = entry.replaceAll(SECRETregex, SECRETreplace);
+                        sb.append(entry);
+                    } else {
+                        sb.append(entry);
+                    }
+                    if (numStrings > 0) {
+                        sb.append("&");
+                    }
+                }
+                retVal = sb.toString();
+            }
+        }
+        return retVal;
+    }
+
+    // stripSecretFromParameters
+    // processes the parameter map for tracing, replacing the value
+    // for any parameter that matches secret with *****
+    @Trivial
+    public static String stripSecretsFromParameters(Map<String, String[]> pMap, String[] secretStrings) {
+        String retVal = null;
+        if (pMap != null && pMap.size() > 0) {
+            java.util.List<String> secretList = null;
+            if (secretStrings != null && secretStrings.length != 0) {
+                secretList = java.util.Arrays.asList(secretStrings);
+            } else {
+                secretList = new ArrayList();
+            }
+
+            StringBuffer sb = new StringBuffer();
+            java.util.Set<String> keys = pMap.keySet();
+            for (String key : keys) {
+                sb.append("{" + key + "=");
+                if (secretList.contains(key)) {
+                    sb.append("*****");
+                } else {
+                    String[] values = pMap.get(key);
+                    sb.append(java.util.Arrays.toString(values));
+                }
+                sb.append("}");
+            }
+            retVal = sb.toString();
+        }
+        return retVal;
+    }
+
+    @Trivial
+    public static String stripSecretFromParameters(Map<String, String[]> pMap, String secretString) {
+        return stripSecretsFromParameters(pMap, new String[] { secretString });
     }
 
     // getRequestStringForTrace
@@ -394,18 +430,30 @@ public class WebUtils {
     // information and returns a string for tracing
     @Trivial
     public static String getRequestStringForTrace(HttpServletRequest request, String[] secretStrings) {
-        if (request == null) {
+        if (request == null || request.getRequestURL() == null) {
             return "[]";
         }
-        String url = ((request.getRequestURL()==null)?null:request.getRequestURL().toString());
-        String queryString = request.getQueryString();
 
-        return "["+stripSecretsFromUrl(url,secretStrings)+"], queryString["+((queryString==null)?"":stripSecretsFromUrl(queryString,secretStrings))+"]";
+        StringBuffer sb = new StringBuffer("[" + stripSecretsFromUrl(request.getRequestURL().toString(), secretStrings) + "]");
+
+        String query = request.getQueryString();
+        if (query != null) {
+            String queryString = stripSecretsFromUrl(query, secretStrings);
+            if (queryString != null) {
+                sb.append(", queryString[" + queryString + "]");
+            }
+        } else {
+            Map<String, String[]> pMap = request.getParameterMap();
+            String paramString = stripSecretsFromParameters(pMap, secretStrings);
+            if (paramString != null) {
+                sb.append(", parameters[" + paramString + "]");
+            }
+        }
+        return sb.toString();
     }
-
 
     @Trivial
     public static String getRequestStringForTrace(HttpServletRequest request, String secretString) {
-        return getRequestStringForTrace(request, new String[] {secretString});
+        return getRequestStringForTrace(request, new String[] { secretString });
     }
 }

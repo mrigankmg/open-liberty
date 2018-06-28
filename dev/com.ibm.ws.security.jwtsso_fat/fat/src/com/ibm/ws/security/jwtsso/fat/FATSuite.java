@@ -14,10 +14,13 @@ import org.junit.runner.RunWith;
 import org.junit.runners.Suite;
 import org.junit.runners.Suite.SuiteClasses;
 
-import componenttest.custom.junit.runner.AlwaysPassesTest;
-
 @RunWith(Suite.class)
 @SuiteClasses({
-                AlwaysPassesTest.class,
+                FeatureOnlyTest.class,
+                ConfigAttributeTests.class,
+                CookieProcessingTests.class,
+                ReplayCookieTests.class,
+                CookieExpirationTests.class,
+                BuilderTests.class,
 })
 public class FATSuite {}

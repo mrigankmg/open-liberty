@@ -92,9 +92,6 @@ public class SSOAuthenticator implements WebAuthenticator {
         return authResult;
     }
 
-    //TODO Need a new design to improve performance when we have multiple cookie with the same name.
-    //TODO:  multi-cookies are in now, but we need to add removing them when logging out.
-
     /**
      * @param req
      * @param res
@@ -116,7 +113,9 @@ public class SSOAuthenticator implements WebAuthenticator {
         }
 
         authResult = handleJwtSSO(req, res);
-        if (authResult != null && (authResult.getStatus().equals(AuthResult.SUCCESS) || !JwtSSOTokenHelper.shouldFallbackToLtpaCookie())) {
+        // If there is a jwtSSOToken in a request, use LTPA will not be allowed.
+        // If there is NO jwtSSOToken in a request and shouldUseLtpaIfJwtAbsent is true, use LTPA will be allowed
+        if (authResult != null || !JwtSSOTokenHelper.shouldUseLtpaIfJwtAbsent()) {
             return authResult;
         }
 
@@ -158,6 +157,8 @@ public class SSOAuthenticator implements WebAuthenticator {
     }
 
     /**
+     * If there is no jwtSSOToken, we will return null. Otherwise, we will AuthenticationResult.
+     *
      * @param cookies
      * @return
      */
@@ -175,11 +176,14 @@ public class SSOAuthenticator implements WebAuthenticator {
         if (encodedjwtssotoken == null) {
             return null;
         } else {
-            //check logged out cookie cache here. Must check full token, not just first cookie.
-            if (webAppSecurityConfig.isTrackLoggedOutSSOCookiesEnabled()) {
-                if (LoggedOutJwtSsoCookieCache.contains(encodedjwtssotoken)) {
-                    return new AuthenticationResult(AuthResult.FAILURE, Tr.formatMessage(tc, "JWT_ALREADY_LOGGED_OUT"));
+            if (LoggedOutJwtSsoCookieCache.contains(encodedjwtssotoken)) {
+                String LoggedOutMsg = "JWT_ALREADY_LOGGED_OUT";
+                if (req.getAttribute(LoggedOutMsg) == null) {
+                    Tr.audit(tc, LoggedOutMsg, new Object[] {});
+                    req.setAttribute(LoggedOutMsg, "true");
                 }
+
+                return new AuthenticationResult(AuthResult.FAILURE, Tr.formatMessage(tc, LoggedOutMsg));
             }
             return authenticateWithJwt(req, res, encodedjwtssotoken);
         }

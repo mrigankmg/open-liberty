@@ -8,7 +8,7 @@
 # Contributors:
 #     IBM Corporation - initial API and implementation
 #*******************************************************************************
--include: ${workspace}/gradle.properties
+-include: ${workspace}/gradle.properties, ${workspace}/cnf/gradle/scripts/anttaskdefs.bnd
 
 # Maven repository credentials
 -connection-settings: ${if;${artifactory.download.token};server;-dummy};id=https://${artifactory.download.server};username=${artifactory.download.user};password=${artifactory.download.token}, \
@@ -76,6 +76,8 @@ javac.source: 1.7
 javac.target: 1.7
 javac.debug: true
 javac.encoding: UTF-8
+# Switch for opting out of the --release javac option introduced in JDK 9, which is useful for more tightly controlling the set of root modules
+javac.args.release: true
 -sources: false
 
 -pedantic: ${if;${driver;gradle};true;false}
@@ -108,7 +110,8 @@ junit: org.apache.servicemix.bundles.junit;version="[4.11,5)"
 mockito: org.mockito.mockito-core;version="[1.9,2)",\
   org.objenesis;version="[2.1,3)"
 
-build.bnd.plugins.path: ${repo;wlp-bndPlugins},${repo;org.apache.aries:org.apache.aries.util;1.1.3}
+build.bnd.plugins.jar: ${repo;wlp-bndPlugins}
+build.bnd.plugins.path: ${workspace}/cnf/bndplugins/classes,${repo;org.apache.aries:org.apache.aries.util;1.1.3}
 build.bnd.plugins: com.ibm.ws.build.bnd.plugins.ExternalPackageProcessor;path:="${build.bnd.plugins.path}",\
   com.ibm.ws.build.bnd.plugins.BundleManifestValidator;path:="${build.bnd.plugins.path}"
 

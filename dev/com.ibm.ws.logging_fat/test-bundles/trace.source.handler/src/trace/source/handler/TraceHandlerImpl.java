@@ -28,7 +28,6 @@ import com.ibm.ws.ffdc.annotation.FFDCIgnore;
 import com.ibm.ws.logging.data.GenericData;
 import com.ibm.ws.logging.data.KeyValuePair;
 import com.ibm.ws.logging.data.LogTraceData;
-import com.ibm.ws.logging.data.Pair;
 import com.ibm.wsspi.collector.manager.BufferManager;
 import com.ibm.wsspi.collector.manager.CollectorManager;
 import com.ibm.wsspi.collector.manager.Handler;
@@ -157,10 +156,10 @@ public class TraceHandlerImpl implements Handler {
     }
 
     private String getAttribute(GenericData genData, String key) {
-        ArrayList<Pair> pairs = genData.getPairs();
-        for (Pair p : pairs) {
-            if (p instanceof KeyValuePair) {
-                KeyValuePair kvp = (KeyValuePair) p;
+        ArrayList<KeyValuePair> pairs = genData.getPairs();
+        for (KeyValuePair p : pairs) {
+            if (p != null && !p.isList()) {
+                KeyValuePair kvp = p;
                 if (kvp.getKey().equals(key)) {
                     if (kvp.isInteger()) {
                         return Integer.toString(kvp.getIntValue());
@@ -185,8 +184,7 @@ public class TraceHandlerImpl implements Handler {
             int counter = 1;
             while (counter <= 500) {
                 try {
-                    LogTraceData logTraceDataEvent = (LogTraceData) bufferMgr.getNextEvent(HANDLER_NAME);
-                    GenericData event = logTraceDataEvent.getGenData();
+                    GenericData event = (LogTraceData) bufferMgr.getNextEvent(HANDLER_NAME);
 
                     // String eventString = event.toString();
                     // if (eventString.contains("testTraceSourceForLibertyLogging") || eventString.contains("testTraceSourceForJUL")) {

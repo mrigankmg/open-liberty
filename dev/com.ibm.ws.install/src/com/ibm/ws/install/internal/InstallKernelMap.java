@@ -82,6 +82,7 @@ public class InstallKernelMap implements Map {
     private static final String ACTION_RESULT = "action.result";
     private static final String ACTION_ERROR_MESSAGE = "action.error.message";
     private static final String ACTION_EXCEPTION_STACKTRACE = "action.exception.stacktrace";
+    private static final String TO_EXTENSION = "to.extension";
     private static final String FEATURES_TO_RESOLVE = "features.to.resolve";
     private static final String SINGLE_JSON_FILE = "single.json.file";
     private static final String MESSAGE_LOCALE = "message.locale";
@@ -269,6 +270,12 @@ public class InstallKernelMap implements Map {
                 data.put(USER_AGENT, value);
                 if (installKernel != null)
                     installKernel.setUserAgent((String) value);
+            } else {
+                throw new IllegalArgumentException();
+            }
+        } else if (TO_EXTENSION.equals(key)) {
+            if (value instanceof String) {
+                data.put(TO_EXTENSION, value);
             } else {
                 throw new IllegalArgumentException();
             }
@@ -467,12 +474,17 @@ public class InstallKernelMap implements Map {
         Collection<List<RepositoryResource>> resolveResult = null;
         RepositoryResolver resolver = null;
         Collection<String> featuresResolved = new ArrayList<String>();
-
+        boolean isOpenLiberty = false;
         try {
-
             for (ProductInfo productInfo : ProductInfo.getAllProductInfo().values()) {
                 productDefinitions.add(new ProductInfoProductDefinition(productInfo));
+
+                if (productInfo.getReplacedBy() == null && productInfo.getId().equals("io.openliberty")) {
+                    isOpenLiberty = true;
+                }
+
             }
+
             RepositoryConnectionList repoList = new RepositoryConnectionList();
             List<File> singleJsonRepos = (List<File>) data.get(SINGLE_JSON_FILE);
             for (File jsonRepo : singleJsonRepos) {
@@ -503,6 +515,10 @@ public class InstallKernelMap implements Map {
             resolver = new RepositoryResolver(productDefinitions, installedFeatures, Collections.<IFixInfo> emptySet(), repoList);
             resolveResult = resolver.resolve((Collection<String>) data.get(FEATURES_TO_RESOLVE));
 
+            Boolean accepted = (Boolean) data.get(LICENSE_ACCEPT);
+            if (accepted == null || !accepted) {
+                throw new InstallException(Messages.INSTALL_KERNEL_MESSAGES.getLogMessage("ERROR_LICENSES_NOT_ACCEPTED"));
+            }
             for (List<RepositoryResource> item : resolveResult) {
                 for (RepositoryResource repoResrc : item) {
                     featuresResolved.add(repoResrc.getMavenCoordinates());
@@ -525,7 +541,7 @@ public class InstallKernelMap implements Map {
             data.put(ACTION_EXCEPTION_STACKTRACE, ExceptionUtils.stacktraceToString(e));
         } catch (RepositoryResolutionException e) {
             data.put(ACTION_RESULT, ERROR);
-            InstallException ie = ExceptionUtils.create(e, (Collection<String>) data.get(FEATURES_TO_RESOLVE), (File) data.get(RUNTIME_INSTALL_DIR), false);
+            InstallException ie = ExceptionUtils.create(e, (Collection<String>) data.get(FEATURES_TO_RESOLVE), (File) data.get(RUNTIME_INSTALL_DIR), false, isOpenLiberty);
             data.put(ACTION_ERROR_MESSAGE, ie.toString());
             data.put(ACTION_EXCEPTION_STACKTRACE, ExceptionUtils.stacktraceToString(ie));
         } catch (InstallException e) {
@@ -615,8 +631,12 @@ public class InstallKernelMap implements Map {
         try {
             InstallKernelImpl installKernel = (InstallKernelImpl) this.installKernel;
             File esaFile = (File) data.get(ACTION_INSTALL);
-            Collection<String> installedAssets = installKernel.installLocalFeature(esaFile.getAbsolutePath(), InstallConstants.TO_USER, true,
-                                                                                   InstallConstants.ExistsAction.replace);
+            String toExtension = (String) data.get(TO_EXTENSION);
+            if (toExtension == null) {
+                toExtension = InstallConstants.TO_USER;
+            }
+            Collection<String> installedAssets = installKernel.installLocalFeatureNoResolve(esaFile.getAbsolutePath(), toExtension, true,
+                                                                                            InstallConstants.ExistsAction.replace);
             data.put(ACTION_INSTALL_RESULT, installedAssets);
         } catch (InstallException e) {
             data.put(ACTION_RESULT, ERROR);

@@ -21,6 +21,7 @@ import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
 
+import javax.net.ssl.SSLPeerUnverifiedException;
 import javax.servlet.http.HttpServletResponse;
 
 import org.apache.http.Header;
@@ -49,6 +50,7 @@ public class JavaEESecTestBase {
     // Values to be set by the child class
     protected LibertyServer server;
     protected static Class<?> logClass;
+    protected static String serverConfigurationFile = "server.xml";
 
     protected JavaEESecTestBase(LibertyServer server, Class<?> logClass) {
         this.server = server;
@@ -442,10 +444,14 @@ public class JavaEESecTestBase {
      */
 
     public String executeFormLogin(HttpClient httpclient, String url, String username, String password, boolean redirect) throws Exception {
-        return executeFormLogin(httpclient, url, username, password, redirect, null);
+        return executeFormLogin(httpclient, url, username, password, redirect, null, null);
     }
 
     public String executeFormLogin(HttpClient httpclient, String url, String username, String password, boolean redirect, String description) throws Exception {
+        return executeFormLogin(httpclient, url, username, password, redirect, description, null);
+    }
+
+    public String executeFormLogin(HttpClient httpclient, String url, String username, String password, boolean redirect, String description, String[] cookies) throws Exception {
         String methodName = "executeFormLogin";
         Log.info(logClass, methodName, "Submitting Login form (POST) =  " + url + " username =" + username + " password=" + password + " description=" + description);
 
@@ -475,18 +481,25 @@ public class JavaEESecTestBase {
 
             location = header.getValue();
             Log.info(logClass, methodName, "Redirect location:  " + location);
-
             Log.info(logClass, methodName, "Modified Redirect location:  " + location);
         } else {
             // Verify we got a 200 from the servlet
             int status = response.getStatusLine().getStatusCode();
             assertTrue("Form login did not result in redirect: " + status, status == HttpServletResponse.SC_OK);
         }
-
+        if (cookies != null) {
+            for(String cookie : cookies) {
+                Header cookieHeader = getCookieHeader(response, cookie);
+                assertCookie(cookieHeader.toString(), false, true);
+            }
+        }
         return location;
     }
 
     public String executeCustomFormLogin(HttpClient httpclient, String url, String username, String password, String viewState) throws Exception {
+        return executeCustomFormLogin(httpclient, url, username, password, viewState, null);
+    }
+    public String executeCustomFormLogin(HttpClient httpclient, String url, String username, String password, String viewState, String[] cookies) throws Exception {
         String methodName = "executeCustomFormLogin";
         Log.info(logClass, methodName, "Submitting custom login form (POST) =  " + url + ", username = " + username + ", password = " + password + ", viewState = " + viewState);
 
@@ -516,6 +529,13 @@ public class JavaEESecTestBase {
         Header header = response.getFirstHeader("Location");
         String location = header.getValue();
         Log.info(logClass, methodName, "Redirect location:  " + location);
+
+        if (cookies != null) {
+            for(String cookie : cookies) {
+                Header cookieHeader = getCookieHeader(response, cookie);
+                assertCookie(cookieHeader.toString(), false, true);
+            }
+        }
         return location;
     }
 
@@ -527,6 +547,9 @@ public class JavaEESecTestBase {
      * @return
      */
     protected String accessPageNoChallenge(HttpClient client, String location, int expectedStatusCode, String message) {
+        return accessPageNoChallenge(client, location, expectedStatusCode, message, null);
+    }
+    protected String accessPageNoChallenge(HttpClient client, String location, int expectedStatusCode, String message, String[] cookies) {
         String methodName = "accessPageNoChallenge";
         Log.info(logClass, methodName, "accessPageNoChallenge: location =  " + location + " expectedStatusCode =" + expectedStatusCode);
 
@@ -545,6 +568,13 @@ public class JavaEESecTestBase {
 
             EntityUtils.consume(response.getEntity());
 
+            if (cookies != null) {
+                for(String cookie : cookies) {
+                    Header cookieHeader = getCookieHeader(response, cookie);
+                    assertCookie(cookieHeader.toString(), false, true);
+                }
+            }
+
             // Paranoia check, make sure we hit the right servlet
             if (response.getStatusLine().getStatusCode() == 200) {
                 assertTrue("Response did not contain expected content (" + message + ")",
@@ -561,6 +591,21 @@ public class JavaEESecTestBase {
             fail("Caught unexpected exception: " + e);
             return null;
         }
+    }
+
+    /**
+     *
+     * @param client
+     * @param location
+     * @param expectedStatusCode
+     * @return
+     */
+    protected void accessPageExpectException(HttpClient client, String location) throws IOException, SSLPeerUnverifiedException {
+        String methodName = "accessPageExpectException";
+        Log.info(logClass, methodName, "accessPageExpectException: location =  " + location);
+        HttpGet getMethod = new HttpGet(location);
+        HttpResponse response = client.execute(getMethod);
+        Log.info(logClass, methodName, "getMethod status:  " + response.getStatusLine());
     }
 
     public void mustContain(String response, String target) {
@@ -620,6 +665,30 @@ public class JavaEESecTestBase {
         Log.info(logClass, "verifyUserResponse", "Verify response contains: " + getUserPrincipal + ", " + getRemoteUser);
         mustContain(response, getUserPrincipal);
         mustContain(response, getRemoteUser);
+    }
+
+    protected void verifyEjbErrorUserResponse(String response, String errorMsgs) {
+        Log.info(logClass, "verifyUserResponse", "Verify response contains: " + errorMsgs);
+        mustContain(response, errorMsgs);
+    }
+
+    protected void verifyEjbUserResponse(String response, String ejbBean, String ejbBeanMethod, String getEjbRemoteUser) {
+        Log.info(logClass, "verifyUserResponse", "Verify response contains: " + ejbBean + ", " + ejbBeanMethod + "," + getEjbRemoteUser);
+        mustContain(response, ejbBean);
+        mustContain(response, ejbBeanMethod);
+        mustContain(response, getEjbRemoteUser);
+    }
+
+    protected void verifyEjbRunAsUserResponse(String response, String ejbBean, String ejbBeanMethod, String getEjbRemoteUser, String getEJBRunAsRemoteUser) {
+        Log.info(logClass, "verifyUserResponse", "Verify response contains: " + ejbBean + ", " + ejbBeanMethod + "," + getEjbRemoteUser);
+        mustContain(response, Constants.getEJBBeanResponse + ejbBean);
+        mustContain(response, ejbBeanMethod);
+        mustContain(response, getEjbRemoteUser);
+        mustContain(response, ejbBean + " is invoking injected " + Constants.ejbRunASBean + " running as specified Employee role: ");
+        mustContain(response, Constants.getEJBBeanResponse + Constants.ejbRunASBean);
+        mustContain(response, getEJBRunAsRemoteUser);
+        mustContain(response, Constants.ejbisCallerManagerFale);
+        mustContain(response, Constants.ejbisCallerEmployeeTrue);
     }
 
     protected void verifyGroupIdsResponse(String response, String realmName, String groupName) {
@@ -730,7 +799,8 @@ public class JavaEESecTestBase {
     /**
      * verify the group names. Note that this is a simple string comparison.
      **/
-    public void verifyGroups(String response, String groups) {
+    public void 
+    verifyGroups(String response, String groups) {
         Log.info(logClass, "verifyGroups", "Verify group contains: " + groups);
         mustContain(response, "groupIds=[" + groups + "]");
     }
@@ -762,4 +832,28 @@ public class JavaEESecTestBase {
         mustContain(response, isCallerInRoleString);
     }
 
+    /**
+     * This is an internal method used to set the server.xml
+     * if the file in changed, restart the server.
+     */
+    public void setServerConfiguration(String serverXML, String... appNames) throws Exception {
+        if (!serverConfigurationFile.equals(serverXML)) {
+            // Update server.xml
+            Log.info(logClass, "setServerConfiguration", "setServerConfigurationFile to : " + serverXML);
+            server.setMarkToEndOfLog();
+            server.setServerConfigurationFile("/" + serverXML); 
+            if (appNames != null) {
+                for (String appName : appNames) {
+                    server.addInstalledAppForValidation(appName);
+                }
+            }
+            serverConfigurationFile = serverXML;
+        }
+    }
+
+    public void assertCookie(String cookieHeaderString, boolean secure, boolean httpOnly) {
+        assertTrue("The Path parameter must be set.", cookieHeaderString.contains("Path=/"));
+        assertEquals("The Secure parameter must" + (secure == true ? "" : " not" + " be set."), secure, cookieHeaderString.contains("Secure"));
+        assertEquals("The HttpOnly parameter must" + (httpOnly == true ? "" : " not" + " be set."), httpOnly, cookieHeaderString.contains("HttpOnly"));
+    }
 }

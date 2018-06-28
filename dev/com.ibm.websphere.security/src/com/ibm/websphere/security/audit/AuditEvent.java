@@ -60,6 +60,13 @@ public class AuditEvent {
     public final static String TARGET_MESSAGING_USER_NAME = "target.messaging.userName";
     public final static String TARGET_MESSAGING_DESTINATION = "target.messaging.destination";
     public final static String TARGET_MESSAGING_OPERATIONTYPE = "target.messaging.operationType";
+    public final static String TARGET_MESSAGING_CALLTYPE = "target.messaging.callType";
+    public final static String TARGET_MESSAGING_JMS_RESOURCE = "target.messaging.jmsResource";
+    public final static String TARGET_MESSAGING_JMS_ROLES = "target.messaging.jmsRoles";
+    public final static String TARGET_MESSAGING_JMS_REQUESTOR_TYPE = "target.messaging.jmsRequestorType";
+    public final static String TARGET_MESSAGING_JMS_QUEUE_PERMISSIONS = "target.messaging.queuePermissions";
+    public final static String TARGET_MESSAGING_JMS_TOPIC_PERMISSIONS = "target.messaging.topicPermissions";
+    public final static String TARGET_MESSAGING_JMS_TEMPORARY_DESTINATION_PERMISSIONS = "target.messaging.tempDestinationPermissions";
 
     public final static String TARGET_JMX_NOTIFICATION_NAME = "target.jmx.notification.name";
     public final static String TARGET_JMX_NOTIFICATION_LISTENER = "target.jmx.notification.listener";
@@ -145,7 +152,7 @@ public class AuditEvent {
     public static final String REASON_TYPE_MISSING_REPOSITORIES_FOR_GROUPS_CONFIGURATION = "Repository for groups is missing or indicates groups are in cross repositories"; // 207
     public static final String REASON_TYPE_ENTITY_TYPE_NOT_SUPPORTED = "Entity type not supported"; // 208
     public static final String REASON_TYPE_CANNOT_WRITE_TO_READ_ONLY_REPOSITORY = "Cannot write to read only repository"; // 209
-    public static final String REASON_TYPE_EXTERNAL_NAME_CONTROL_NOT_FOUND = ""; // 210
+    public static final String REASON_TYPE_EXTERNAL_NAME_CONTROL_NOT_FOUND = "External name control not found"; // 210
     public static final String REASON_TYPE_INVALID_IDENTIFIER = "Invalid identifier"; // 211
     public static final String REASON_TYPE_ENTITY_NOT_FOUND = "Entity not found"; // 212
     public static final String REASON_TYPE_MISSING_SORT_KEY = "Missing sort key"; // 213

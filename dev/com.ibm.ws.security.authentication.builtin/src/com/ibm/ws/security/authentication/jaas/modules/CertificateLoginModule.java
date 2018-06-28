@@ -27,6 +27,7 @@ import javax.security.auth.x500.X500Principal;
 import com.ibm.ejs.ras.TraceNLS;
 import com.ibm.websphere.ras.Tr;
 import com.ibm.websphere.ras.TraceComponent;
+import com.ibm.websphere.security.auth.WSLoginFailedException;
 import com.ibm.ws.ffdc.annotation.FFDCIgnore;
 import com.ibm.ws.security.AccessIdUtil;
 import com.ibm.ws.security.authentication.AuthenticationException;
@@ -74,7 +75,7 @@ public class CertificateLoginModule extends ServerCommonLoginModule implements L
 
     /** {@inheritDoc} */
     @Override
-    @FFDCIgnore({ RegistryException.class, CertificateMapFailedException.class, LoginException.class })
+    @FFDCIgnore({ RegistryException.class, CertificateMapFailedException.class, WSLoginFailedException.class, LoginException.class })
     public boolean login() throws LoginException {
         if (isAlreadyProcessed()) {
             if (TraceComponent.isAnyTracingEnabled() && tc.isDebugEnabled()) {
@@ -138,6 +139,8 @@ public class CertificateLoginModule extends ServerCommonLoginModule implements L
                 Tr.debug(tc, "CLIENT-CERT Authentication failed for the client certificate with dn " + dn + ". The dn did not map to a user in the registry.");
             }
             throw new AuthenticationException(msg, e);
+        } catch (WSLoginFailedException e) {
+            throw new AuthenticationException(e.getLocalizedMessage());
         } catch (LoginException e) {
             // Need to re-throw LoginException
             throw e;
@@ -270,10 +273,8 @@ public class CertificateLoginModule extends ServerCommonLoginModule implements L
      * @throws Exception
      */
     private void handleUserLogin(X509Certificate certChain[]) throws RegistryException, CertificateMapNotSupportedException, CertificateMapFailedException, EntryNotFoundException, Exception {
-        X509Certificate cert = certChain[0];
-
         UserRegistry userRegistry = getUserRegistry();
-        username = userRegistry.mapCertificate(cert);
+        username = userRegistry.mapCertificate(certChain);
         authenticatedId = userRegistry.getUniqueUserId(username);
         securityName = userRegistry.getUserSecurityName(authenticatedId);
         if (TraceComponent.isAnyTracingEnabled() && tc.isDebugEnabled()) {

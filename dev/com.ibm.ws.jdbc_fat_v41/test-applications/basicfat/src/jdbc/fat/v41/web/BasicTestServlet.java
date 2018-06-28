@@ -70,7 +70,6 @@ public class BasicTestServlet extends FATDatabaseServlet {
     private List<String> globalSchemaList = null;
     private boolean isGetColorRegistered = false;
     private boolean isGetUserRegistered = false;
-    public static MBeanServer mbeanServer = ManagementFactory.getPlatformMBeanServer();
 
     @Resource
     private UserTransaction tran;
@@ -1117,7 +1116,7 @@ public class BasicTestServlet extends FATDatabaseServlet {
 
     // Ensure that we preserve the behavior that DatabaseMetaData.supportsRefCursors always returns false prior to jdbc-4.1 feature
     @Test
-    @MinimumJavaLevel(javaLevel = 1.8) // supportsRefCursor only available in Java 8 or higher
+    @MinimumJavaLevel(javaLevel = 8) // supportsRefCursor only available in Java 8 or higher
     public void testSupportsRefCursors() throws Exception {
         Connection con = xads.getConnection();
         try {
@@ -1173,7 +1172,7 @@ public class BasicTestServlet extends FATDatabaseServlet {
 
     // Ensure that we preserve the behavior that DatabaseMetaData.getMaxLogicalLobSize always returns 0 prior to jdbc-4.2 feature
     @Test
-    @MinimumJavaLevel(javaLevel = 1.8) // getMaxLogicalLobSize only available in Java 8 or higher
+    @MinimumJavaLevel(javaLevel = 8) // getMaxLogicalLobSize only available in Java 8 or higher
     public void testGetMaxLogicalLobSize() throws Exception {
         Connection con = xads.getConnection();
         try {

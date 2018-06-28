@@ -31,12 +31,14 @@ public class LoggedOutJwtSsoCookieCache {
     private static boolean atCapacity = false;
     private static boolean initialized = false;
     private static MessageDigest md = null;
+    private static Object lock = null;
 
     private LoggedOutJwtSsoCookieCache() {}
 
     private static void init() {
         clist = new ArrayList<String>();
         cSet = new HashSet<String>();
+        lock = new Object();
         try {
             md = MessageDigest.getInstance("SHA-1"); // nice short string
         } catch (Exception e) {
@@ -44,10 +46,8 @@ public class LoggedOutJwtSsoCookieCache {
         initialized = true;
     }
 
-    static String lastResult = null;
-
     // store as digests to save space
-    static String toDigest(String input) {
+    private static String toDigest(String input) {
         md.reset();
         try {
             md.update(input.getBytes("UTF-8"));
@@ -58,37 +58,39 @@ public class LoggedOutJwtSsoCookieCache {
         return result;
     }
 
-    public static synchronized void put(String tokenString) {
+    public static void put(String tokenString) {
         if (tokenString == null)
             return;
         if (!initialized)
             init();
-        String digest = toDigest(tokenString);
-        if (atCapacity) {
-            cSet.remove(clist.get(lastPosition));
-            clist.set(lastPosition, digest); // overwrite eldest entry
-        } else {
-            clist.add(digest);
+        synchronized (lock) {
+            String digest = toDigest(tokenString);
+            if (atCapacity) {
+                cSet.remove(clist.get(lastPosition));
+                clist.set(lastPosition, digest); // overwrite eldest entry
+            } else {
+                clist.add(digest);
+            }
+            cSet.add(digest);
+            lastPosition++;
+            // use rotating list so we can remove eldest entries once capacity is reached.
+            if (lastPosition >= maxSize) {
+                lastPosition = 0;
+                atCapacity = true;
+            }
         }
-        cSet.add(digest);
-        lastPosition++;
-        // use rotating list so we can remove eldest entries once capacity is reached.
-        if (lastPosition >= maxSize) {
-            lastPosition = 0;
-            atCapacity = true;
-        }
-
     }
 
     static int getSetSize() { // unit testing
         return cSet.size();
     }
 
-    public static synchronized boolean contains(String tokenString) {
+    public static boolean contains(String tokenString) {
         if (!initialized)
             return false;
-        return tokenString == null ? false : cSet.contains(toDigest(tokenString));
-
+        synchronized (lock) {
+            return tokenString == null ? false : cSet.contains(toDigest(tokenString));
+        }
     }
 
 }

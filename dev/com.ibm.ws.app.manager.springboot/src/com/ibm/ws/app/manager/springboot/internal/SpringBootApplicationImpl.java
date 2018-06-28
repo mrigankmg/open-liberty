@@ -10,6 +10,9 @@
  *******************************************************************************/
 package com.ibm.ws.app.manager.springboot.internal;
 
+import static com.ibm.ws.app.manager.springboot.internal.SpringConstants.ID_HTTP_ENDPOINT;
+import static com.ibm.ws.app.manager.springboot.internal.SpringConstants.ID_SSL;
+import static com.ibm.ws.app.manager.springboot.internal.SpringConstants.ID_VIRTUAL_HOST;
 import static com.ibm.ws.app.manager.springboot.internal.SpringConstants.SPRING_APP_TYPE;
 import static com.ibm.ws.app.manager.springboot.internal.SpringConstants.SPRING_BOOT_CONFIG_BUNDLE_PREFIX;
 import static com.ibm.ws.app.manager.springboot.internal.SpringConstants.SPRING_BOOT_CONFIG_NAMESPACE;
@@ -32,6 +35,7 @@ import java.security.NoSuchAlgorithmException;
 import java.security.ProtectionDomain;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
@@ -44,6 +48,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.jar.JarFile;
 import java.util.jar.Manifest;
+import java.util.stream.Stream;
+import java.util.stream.StreamSupport;
 
 import javax.xml.bind.JAXBException;
 
@@ -52,8 +58,17 @@ import org.osgi.framework.BundleContext;
 import org.osgi.framework.BundleException;
 import org.osgi.framework.BundleReference;
 import org.osgi.framework.Constants;
+import org.osgi.framework.InvalidSyntaxException;
 import org.osgi.framework.ServiceRegistration;
+import org.osgi.framework.namespace.PackageNamespace;
 import org.osgi.framework.startlevel.BundleStartLevel;
+import org.osgi.framework.wiring.BundleCapability;
+import org.osgi.framework.wiring.FrameworkWiring;
+import org.osgi.resource.Namespace;
+import org.osgi.resource.Requirement;
+import org.osgi.resource.Resource;
+import org.osgi.service.cm.Configuration;
+import org.osgi.service.cm.ConfigurationAdmin;
 
 import com.ibm.websphere.ras.Tr;
 import com.ibm.websphere.ras.TraceComponent;
@@ -66,7 +81,11 @@ import com.ibm.ws.app.manager.module.internal.ModuleHandler;
 import com.ibm.ws.app.manager.module.internal.ModuleInfoUtils;
 import com.ibm.ws.app.manager.springboot.container.SpringBootConfig;
 import com.ibm.ws.app.manager.springboot.container.SpringBootConfigFactory;
+import com.ibm.ws.app.manager.springboot.container.config.ConfigElement;
+import com.ibm.ws.app.manager.springboot.container.config.KeyStore;
 import com.ibm.ws.app.manager.springboot.container.config.ServerConfiguration;
+import com.ibm.ws.app.manager.springboot.container.config.SpringConfiguration;
+import com.ibm.ws.app.manager.springboot.container.config.VirtualHost;
 import com.ibm.ws.app.manager.springboot.support.ContainerInstanceFactory;
 import com.ibm.ws.app.manager.springboot.support.ContainerInstanceFactory.Instance;
 import com.ibm.ws.app.manager.springboot.support.SpringBootApplication;
@@ -159,6 +178,7 @@ public class SpringBootApplicationImpl extends DeployedAppInfoBase implements Sp
     }
 
     final class SpringBootConfigImpl implements SpringBootConfig {
+
         private final String id;
         private final AtomicReference<ServerConfiguration> serverConfig = new AtomicReference<>();
         private final AtomicReference<Bundle> virtualHostConfig = new AtomicReference<>();
@@ -173,7 +193,22 @@ public class SpringBootApplicationImpl extends DeployedAppInfoBase implements Sp
         }
 
         @Override
-        public <T> void configure(ServerConfiguration config, T helperParam, Class<T> type) {
+        public <T> void configure(ServerConfiguration config, T helperParam, Class<T> type, SpringConfiguration additionalConfig) {
+            if (tc.isDebugEnabled()) {
+                Tr.debug(tc, "SpringConfiguration Info = " + additionalConfig);
+            }
+            if (tc.isWarningEnabled()) {
+                //WRN about some configurations we don't currently support.
+                if (additionalConfig.isCompression_configured_in_spring_app()) {
+                    Tr.warning(tc, "warning.spring_config.ignored.compression");
+                }
+                if (additionalConfig.isSession_configured_in_spring_app()) {
+                    Tr.warning(tc, "warning.spring_config.ignored.session");
+                }
+            }
+            if (!config.getSsls().isEmpty() && !isSSLEnabled()) {
+                throw new IllegalStateException(Tr.formatMessage(tc, "error.missing.ssl"));
+            }
             ContainerInstanceFactory<T> containerInstanceFactory = factory.getContainerInstanceFactory(type);
             if (containerInstanceFactory == null) {
                 throw new IllegalStateException("No configuration helper found for: " + type);
@@ -181,13 +216,48 @@ public class SpringBootApplicationImpl extends DeployedAppInfoBase implements Sp
             if (!serverConfig.compareAndSet(null, config)) {
                 throw new IllegalStateException("Server configuration already set.");
             }
+
+            String virtualHostId = "default_host";
+            List<VirtualHost> virtualHosts = config.getVirtualHosts();
+            if (!virtualHosts.isEmpty()) {
+                virtualHostId = config.getVirtualHosts().iterator().next().getId();
+            }
+
             try {
-                if (!configInstance.compareAndSet(null, containerInstanceFactory.intialize(SpringBootApplicationImpl.this, id, helperParam))) {
+                if (!configInstance.compareAndSet(null, containerInstanceFactory.intialize(SpringBootApplicationImpl.this, id, virtualHostId, helperParam, additionalConfig))) {
                     throw new IllegalStateException("Config instance already created.");
                 }
             } catch (IOException | UnableToAdaptException | MetaDataException e) {
                 throw new IllegalArgumentException(e);
             }
+        }
+
+        private boolean isSSLEnabled() {
+            Bundle systemBundle = factory.getBundleContext().getBundle(Constants.SYSTEM_BUNDLE_LOCATION);
+            FrameworkWiring fwkWiring = systemBundle.adapt(FrameworkWiring.class);
+            Collection<BundleCapability> packages = fwkWiring.findProviders(new Requirement() {
+
+                @Override
+                public Resource getResource() {
+                    return null;
+                }
+
+                @Override
+                public String getNamespace() {
+                    return PackageNamespace.PACKAGE_NAMESPACE;
+                }
+
+                @Override
+                public Map<String, String> getDirectives() {
+                    return Collections.singletonMap(Namespace.REQUIREMENT_FILTER_DIRECTIVE, "(" + PackageNamespace.PACKAGE_NAMESPACE + "=com.ibm.ws.ssl)");
+                }
+
+                @Override
+                public Map<String, Object> getAttributes() {
+                    return Collections.emptyMap();
+                }
+            });
+            return !packages.isEmpty();
         }
 
         @Override
@@ -200,7 +270,11 @@ public class SpringBootApplicationImpl extends DeployedAppInfoBase implements Sp
             if (instance == null) {
                 throw new IllegalStateException("No Config instance set.");
             }
-            virtualHostConfig.updateAndGet((b) -> installVirtualHostBundle(b, config));
+            checkExistingConfig(config);
+            if (!config.getVirtualHosts().isEmpty()) {
+                // only install a virtual host config if we are not using the default-host
+                virtualHostConfig.updateAndGet((b) -> installVirtualHostBundle(b, config));
+            }
             instance.start();
         }
 
@@ -265,13 +339,125 @@ public class SpringBootApplicationImpl extends DeployedAppInfoBase implements Sp
             return b;
         }
 
+        private void checkExistingConfig(ServerConfiguration libertyConfig) {
+            List<VirtualHost> hosts = libertyConfig.getVirtualHosts();
+            if (hosts.isEmpty()) {
+                return;
+            }
+            String requestedPort = hosts.get(0).getId().substring(ID_VIRTUAL_HOST.length());
+
+            // Checks ConfigurationAdmin to see if the ID for the following
+            // exist.  This is done in priority order because if a higher
+            // priority configuration is found then we remove all the lower
+            // priority elements as well as the element with the matching ID
+            // 1. <virtualHost/> - highest priority
+            if (checkVirtualHost(libertyConfig, requestedPort)) {
+                // found matching ID for <virtualHost/> return because we cleared out the rest
+                return;
+            }
+            // 2. <httpEndpoint/> - second priority
+            if (checkHttpEndpoint(libertyConfig, requestedPort)) {
+                // found matching ID for <httpEndpoint/> return because we cleared out the other
+                // lower priority elements
+                return;
+            }
+            // 3. <ssl/> - third priority
+            if (checkSsl(libertyConfig, requestedPort)) {
+                // found matching ID for <ssl/> return because we cleared out the other
+                // lower priority elements
+                return;
+            }
+            // 4. <keyStore/> - forth priority, this checks for both the KeyStore and TrustStore
+            checkKeyStores(libertyConfig);
+        }
+
+        private boolean checkVirtualHost(ServerConfiguration sc, String requestedPort) {
+            String virtualHostFilter = createFilter("com.ibm.ws.http.virtualhost", ID_VIRTUAL_HOST + requestedPort);
+            return checkConfigElement(sc, virtualHostFilter, sc.getVirtualHosts(), sc.getHttpEndpoints(), sc.getSsls(), sc.getKeyStores());
+        }
+
+        private boolean checkHttpEndpoint(ServerConfiguration sc, String requestedPort) {
+            String endpointFilter = createFilter("com.ibm.ws.http", ID_HTTP_ENDPOINT + requestedPort);
+            return checkConfigElement(sc, endpointFilter, sc.getHttpEndpoints(), sc.getSsls(), sc.getKeyStores());
+        }
+
+        private boolean checkSsl(ServerConfiguration sc, String requestedPort) {
+            String sslFilter = createFilter("com.ibm.ws.ssl.repertoire", ID_SSL + requestedPort);
+            return checkConfigElement(sc, sslFilter, sc.getSsls(), sc.getKeyStores());
+        }
+
+        private boolean checkConfigElement(ServerConfiguration libertyConfig, String filter, List<? extends ConfigElement> toCheck,
+                                           @SuppressWarnings("rawtypes") List... lowerPriority) {
+            boolean result = false;
+            try {
+                if (toCheck.isEmpty()) {
+                    return result = true;
+                }
+                Configuration[] existing = factory.getConfigurationAdmin().listConfigurations(filter);
+                return result = existing != null && existing.length > 0;
+            } catch (IOException | InvalidSyntaxException e) {
+                // Auto FFDC here, this will happen because of a defect
+                throw new RuntimeException(e);
+            } finally {
+                if (result) {
+                    // no toCheck elements, or found match; clear everything out
+                    toCheck.clear();
+                    for (List<?> toClear : lowerPriority) {
+                        toClear.clear();
+                    }
+                }
+            }
+        }
+
+        private String createFilter(String factoryPid, String id) {
+            StringBuilder sb = new StringBuilder();
+            sb.append("(&");
+            sb.append('(').append(ConfigurationAdmin.SERVICE_FACTORYPID).append('=').append(factoryPid).append(')');
+            sb.append('(').append("id=").append(id).append(')');
+            sb.append(')');
+            return sb.toString();
+        }
+
+        private boolean checkKeyStores(ServerConfiguration sc) {
+            boolean result = false;
+            List<KeyStore> keyStores = sc.getKeyStores();
+            for (Iterator<KeyStore> iKeyStores = keyStores.iterator(); iKeyStores.hasNext();) {
+                KeyStore keyStore = iKeyStores.next();
+                if (checkKeyStore(keyStore)) {
+                    iKeyStores.remove();
+                    result = true;
+                }
+            }
+
+            return result;
+        }
+
+        /**
+         * @param keyStore
+         * @return
+         */
+        private boolean checkKeyStore(KeyStore keyStore) {
+            try {
+                String filter = createFilter("com.ibm.ws.ssl.keystore", keyStore.getId());
+                Configuration[] existing = factory.getConfigurationAdmin().listConfigurations(filter);
+                return existing != null && existing.length > 0;
+            } catch (IOException | InvalidSyntaxException e) {
+                // Auto FFDC here, this will happen because of a defect
+                throw new RuntimeException(e);
+            }
+
+        }
+
         @FFDCIgnore(IOException.class)
         private String getDefaultInstances(ServerConfiguration libertyConfig, String configId) {
-            if (libertyConfig.getHttpEndpoints().size() != 1) {
+            if (libertyConfig.getVirtualHosts().size() > 1) {
+                throw new IllegalStateException("Only one virtualHost is allowed: " + libertyConfig.getVirtualHosts());
+            }
+            if (libertyConfig.getHttpEndpoints().size() > 1) {
                 throw new IllegalStateException("Only one httpEndpoint is allowed: " + libertyConfig.getHttpEndpoints());
             }
-            if (libertyConfig.getVirtualHosts().size() != 1) {
-                throw new IllegalStateException("Only one virtualHost is allowed: " + libertyConfig.getVirtualHosts());
+            if (libertyConfig.getSsls().size() > 1) {
+                throw new IllegalStateException("Only one ssl is allowed: " + libertyConfig.getSsls());
             }
             StringWriter result = new StringWriter();
             try {
@@ -323,7 +509,7 @@ public class SpringBootApplicationImpl extends DeployedAppInfoBase implements Sp
 
         try {
             newContainer = storeLibs(applicationInformation, getRawContainer(applicationInformation), manifest, factory);
-            manifest = getSpringBootManifest(applicationInformation.getContainer());
+            manifest = getSpringBootManifest(applicationInformation);
             infos = getContainerInfos(applicationInformation.getContainer(), factory, manifest);
             String moduleURI = ModuleInfoUtils.getModuleURIFromLocation(applicationInformation.getLocation());
             mci = new SpringModuleContainerInfo(factory.getSpringBootSupport(), factory.getModuleHandler(), factory.getModuleMetaDataExtenders().get("web"), factory.getNestedModuleMetaDataFactories().get("web"), applicationInformation.getContainer(), null, moduleURI, moduleClassesInfo, infos);
@@ -344,10 +530,17 @@ public class SpringBootApplicationImpl extends DeployedAppInfoBase implements Sp
         }
     }
 
-    private static SpringBootManifest getSpringBootManifest(Container container) throws UnableToAdaptException {
-        Entry manifestEntry = container.getEntry(JarFile.MANIFEST_NAME);
+    private static SpringBootManifest getSpringBootManifest(ApplicationInformation<DeployedAppInfo> appInfo) throws UnableToAdaptException {
+        Entry manifestEntry = appInfo.getContainer().getEntry(JarFile.MANIFEST_NAME);
+        if (manifestEntry == null) {
+            throw new IllegalArgumentException(Tr.formatMessage(tc, "error.no.manifest.found", appInfo.getName()));
+        }
         try (InputStream mfIn = manifestEntry.adapt(InputStream.class)) {
-            return new SpringBootManifest(new Manifest(mfIn));
+            SpringBootManifest sbm = new SpringBootManifest(new Manifest(mfIn));
+            if (sbm.getSpringStartClass() == null) {
+                throw new IllegalArgumentException(Tr.formatMessage(tc, "error.no.spring.class.found"));
+            }
+            return sbm;
         } catch (IOException e) {
             throw new UnableToAdaptException(e);
         }
@@ -508,9 +701,9 @@ public class SpringBootApplicationImpl extends DeployedAppInfoBase implements Sp
         }
     }
 
-    private String getVirtualHostConfig(String start, String id, String end) {
+    private String getVirtualHostConfig(String start, String virtualHostId, String end) {
         StringBuilder builder = new StringBuilder(start);
-        builder.append("springVirtualHost-" + id);
+        builder.append(virtualHostId);
         builder.append(end);
         return builder.toString();
     }
@@ -544,9 +737,10 @@ public class SpringBootApplicationImpl extends DeployedAppInfoBase implements Sp
         Entry libEntry = moduleContainer.getEntry(manifest.getSpringBootLib());
         if (libEntry != null) {
             Container libContainer = libEntry.adapt(Container.class);
+            final SpringBootThinUtil.StarterFilter starterFilter = SpringBootThinUtil.getStarterFilter(stringStream(libContainer));
             if (libContainer != null) {
                 for (Entry entry : libContainer) {
-                    if (!SpringBootThinUtil.isEmbeddedContainerImpl(entry.getName())) {
+                    if (!starterFilter.apply(entry.getName())) {
                         String jarEntryName = entry.getName();
                         Container jarContainer = entry.adapt(Container.class);
                         if (jarContainer != null) {
@@ -559,6 +753,11 @@ public class SpringBootApplicationImpl extends DeployedAppInfoBase implements Sp
             }
         }
         return result;
+    }
+
+    public static Stream<String> stringStream(Container container) {
+        Stream<String> stream = StreamSupport.stream(container.spliterator(), false).map(entry -> entry.getName());
+        return stream;
     }
 
     private static List<ContainerInfo> getStoredIndexClassesInfos(Entry indexFile, LibIndexCache libIndexCache) throws UnableToAdaptException {

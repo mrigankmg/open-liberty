@@ -130,6 +130,7 @@ ERROR_FAILED_TO_RESOLVE_FEATURE_FROM_DIR.explanation=Das Installationsprogramm k
 ERROR_FAILED_TO_RESOLVE_FEATURE_FROM_DIR.useraction=Stellen Sie sicher, dass das Verzeichnis das Feature enth\u00e4lt, und wiederholen Sie dann die Operation.
 
 ERROR_UNABLE_TO_LOCATE_COMMAND_EXE=CWWKF1228E: Die ausf\u00fchrbare Datei {0} wurde nicht an den folgenden Positionen gefunden: {1}
+
 ERROR_UNABLE_TO_LOCATE_COMMAND_EXE.explanation=Das Installationsprogramm hat die ausf\u00fchrbare Datei nicht gefunden.
 ERROR_UNABLE_TO_LOCATE_COMMAND_EXE.useraction=Stellen Sie sicher, dass die ausf\u00fchrbare Datei an einer der angegebenen Positionen vorhanden ist.
 
@@ -254,7 +255,7 @@ ERROR_ASSET_MISSING_DEPENDENT.explanation=Das Asset kann nicht heruntergeladen b
 ERROR_ASSET_MISSING_DEPENDENT.useraction=Konfigurieren Sie installUtility so, dass eine Verbindung zu IBM WebSphere Liberty Repository hergestellt wird, um das Asset herunterzuladen bzw. zu installieren. Alternativ k\u00f6nnen Sie die Datei wlp-featureRepo-<Version>.zip von der IBM Fix Central-Website herunterladen und den entpackten Ordner als verzeichnisbasiertes Repository konfigurieren. Wenn Sie keinen Internetzugang haben, bitten Sie Ihren Administrator, das fehlende Asset und alle Abh\u00e4ngigkeiten herunterzuladen und diese einem konfigurierten Repository hinzuzuf\u00fcgen. Weitere Informationen zum Installieren von Assets finden Sie in der Dokumentation zu installUtility im IBM Knowledge Center. Wenn das Problem weiterhin auftritt, sehen Sie sich die Informationen zur Fehlerbestimmung auf der Webseite von WebSphere Application Server mit der Adresse http://www.ibm.com/software/webservers/appserv/was/support/ an.
 
 ERROR_FAILED_TO_RESOLVE_ASSETS=CWWKF1259E: Die folgenden Assets k\u00f6nnen nicht abgerufen werden: {0}. Stellen Sie sicher, dass die angegebenen Assets g\u00fcltig sind. F\u00fchren Sie den installUtility-Befehl find aus, um die IDs der g\u00fcltigen Assets zu ermitteln.
-ERROR_FAILED_TO_RESOLVE_ASSETS.explanation=Das Installationsprogramm kann die angegebenen Assets nicht aus den Repositorys abrufen.
+ERROR_FAILED_TO_RESOLVE_ASSETS.explanation=Das Installationsprogramm konnte die angegebenen Assets nicht aus den Repositorys abrufen.
 ERROR_FAILED_TO_RESOLVE_ASSETS.useraction=Stellen Sie sicher, dass die angegebenen Assets g\u00fcltig sind, dass eine g\u00fcltige Benutzer-ID und ein g\u00fcltiges Kennwort angegeben wurden und dass die Repositorys zug\u00e4nglich sind.
 
 ERROR_ASSET_NOT_APPLICABLE=CWWKF1260E: Das Asset {0} ist f\u00fcr die Produktinstallation {1} nicht zutreffend. {2}
@@ -431,6 +432,15 @@ ERROR_EXTENSION_FROM_ASSETID_NOT_FOUND.action= Wenn Sie das Feature in der angeg
 ERROR_NON_FEATURE_CANNOT_INSTALL_TO_EXTENSION=CWWKF1298E: {0} ist kein Feature und kann deshalb nicht in einer Produkterweiterung installiert werden. F\u00fchren Sie den Befehl ohne Angabe der Erweiterung aus.
 ERROR_NON_FEATURE_CANNOT_INSTALL_TO_EXTENSION.explanation=In einer Produkterweiterung k\u00f6nnen nur Features installiert werden.
 ERROR_NON_FEATURE_CANNOT_INSTALL_TO_EXTENSION.action=F\u00fchren Sie den Installationsbefehl installUtility ohne Angabe der Erweiterung erneut aus.
+
+ERROR_FAILED_TO_RESOLVE_FEATURES_FOR_OPEN_LIBERTY=CWWKF1299E: Die folgenden Features konnten nicht abgerufen werden: {0}. Stellen Sie sicher, dass die Features f\u00fcr Open Liberty g\u00fcltig sind.
+ERROR_FAILED_TO_RESOLVE_FEATURES_FOR_OPEN_LIBERTY.explanation=Das Installationsprogramm konnte die angegebenen Features nicht aus den verbundenen Repositorys abrufen.
+ERROR_FAILED_TO_RESOLVE_FEATURES_FOR_OPEN_LIBERTY.useraction=Wenn die angegebenen Features vorhanden sind, stellen Sie sicher, dass sie f\u00fcr Open Liberty g\u00fcltig sind.
+
+ERROR_INVALID_PRODUCT_EDITION_FOR_OPEN_LIBERTY_FEATURE=CWWKF1300E: Das Feature {0} kann nicht in der Edition IBM WebSphere Application Server Liberty Core installiert werden, weil es nur f\u00fcr andere Editionen von IBM WebSphere Application Server Liberty und Open Liberty gilt. Verwenden Sie die Aktion "find" des Befehls featureManager, um eine Liste von Features abzurufen, die f\u00fcr die Edition IBM WebSphere Application Server Liberty Core g\u00fcltig sind.
+ERROR_INVALID_PRODUCT_EDITION_FOR_OPEN_LIBERTY_FEATURE.explanation=Das Feature ist f\u00fcr die Edition des installierten Produkts nicht g\u00fcltig.
+ERROR_INVALID_PRODUCT_EDITION_FOR_OPEN_LIBERTY_FEATURE.useraction=Installieren Sie Features, die von der Produktedition unterst\u00fctzt werden.
+
 
 # Following messages for info logging purpose
 LOG_INSTALL_FEATURES=CWWKF1300I: Die folgenden Features werden installiert: {0}.
