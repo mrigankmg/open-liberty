@@ -15,6 +15,7 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNotSame;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
@@ -66,6 +67,18 @@ public class ConcurrentRxTestServlet extends FATServlet {
     // Maximum number of nanoseconds to wait for a task to complete
     static final long TIMEOUT_NS = TimeUnit.MINUTES.toNanos(2);
 
+    static final boolean AT_LEAST_JAVA_9;
+    static {
+        boolean atLeastJava9;
+        try {
+            CompletableFuture.class.getMethod("copy");
+            atLeastJava9 = true;
+        } catch (NoSuchMethodException x) {
+            atLeastJava9 = false;
+        }
+        AT_LEAST_JAVA_9 = atLeastJava9;
+    }
+
     @Resource(name = "java:comp/env/executorRef")
     private ManagedExecutorService defaultManagedExecutor;
 
@@ -73,7 +86,7 @@ public class ConcurrentRxTestServlet extends FATServlet {
     private ManagedScheduledExecutorService noContextExecutor;
 
     @Resource(name = "java:app/oneContextExecutorRef", lookup = "concurrent/oneContextExecutor")
-    private ManagedExecutorService oneContextExecutor;
+    private ManagedExecutorService oneContextExecutor; // the single enabled context is jeeMetadataContext
 
     // Executor that runs everything on the invoker's thread instead of submitting tasks to run asynchronously.
     private Executor sameThreadExecutor = runnable -> {
@@ -103,7 +116,7 @@ public class ConcurrentRxTestServlet extends FATServlet {
         CountDownLatch blocker2 = new CountDownLatch(1);
 
         try {
-            ManagedCompletableFuture<Boolean> cf1 = ManagedCompletableFuture.supplyAsync(() -> {
+            CompletableFuture<Boolean> cf1 = ManagedCompletableFuture.supplyAsync(() -> {
                 System.out.println("> supplyAsync[1] from testAcceptEither");
                 try {
                     boolean result = blocker1.await(TIMEOUT_NS * 2, TimeUnit.NANOSECONDS);
@@ -128,7 +141,7 @@ public class ConcurrentRxTestServlet extends FATServlet {
             });
 
             LinkedBlockingQueue<Object> results = new LinkedBlockingQueue<Object>();
-            ManagedCompletableFuture<Void> cf3 = cf1.acceptEither(cf2, (b) -> {
+            CompletableFuture<Void> cf3 = cf1.acceptEither(cf2, (b) -> {
                 System.out.println("> lookup from testAcceptEither");
                 results.add(b);
                 results.add(Thread.currentThread().getName());
@@ -362,14 +375,15 @@ public class ConcurrentRxTestServlet extends FATServlet {
     }
 
     /**
-     * Test the constructor for managed completable future that has no underlying action, backed by the DefaultManagedExecutorService
+     * Test the newIncompleteFuture method that has no underlying action, backed by the DefaultManagedExecutorService
      * as its default asynchronous execution facility. Use the complete method to manually supply a value, and verify that dependent
      * stage(s) execute on the managed executor.
      */
     @Test
     public void testActionlessFutureWithDefaultManagedExecutor() throws Exception {
+        ManagedCompletableFuture<Integer> cf = (ManagedCompletableFuture<Integer>) ManagedCompletableFuture.completedFuture(0);
         BlockableIncrementFunction increment = new BlockableIncrementFunction("testActionlessFutureWithDefaultManagedExecutor", null, null, false);
-        CompletableFuture<Integer> cf1 = new ManagedCompletableFuture<Integer>();
+        CompletableFuture<Integer> cf1 = cf.newIncompleteFuture();
         CompletableFuture<Integer> cf2 = cf1.thenApplyAsync(increment);
 
         assertEquals(Integer.valueOf(177), cf1.getNow(177));
@@ -393,17 +407,18 @@ public class ConcurrentRxTestServlet extends FATServlet {
     }
 
     /**
-     * Test the constructor for managed completable future that has no underlying action, backed by the specified executor
+     * Test the newIncompleteFuture method that has no underlying action, backed by the specified executor
      * as its default asynchronous execution facility. This test specifies an unmanaged executor to validate that
      * managed completable future can tolerate other executors.
      */
     @Test
     public void testActionlessFutureWithSpecifiedExecutor() throws Exception {
+        ManagedCompletableFuture<Integer> cf = (ManagedCompletableFuture<Integer>) ManagedCompletableFuture.supplyAsync(() -> 0, sameThreadExecutor);
         BlockableIncrementFunction increment1 = new BlockableIncrementFunction("testActionlessFutureWithSpecifiedExecutor1", null, null, false);
         BlockableIncrementFunction increment2 = new BlockableIncrementFunction("testActionlessFutureWithSpecifiedExecutor2", null, null, false);
         BlockableIncrementFunction increment3 = new BlockableIncrementFunction("testActionlessFutureWithSpecifiedExecutor3", null, null, false);
         BlockableIncrementFunction increment4 = new BlockableIncrementFunction("testActionlessFutureWithSpecifiedExecutor4", null, null, false);
-        CompletableFuture<Integer> cf0 = new ManagedCompletableFuture<Integer>(sameThreadExecutor);
+        CompletableFuture<Integer> cf0 = cf.newIncompleteFuture();
         CompletableFuture<Integer> cf1 = cf0.thenApplyAsync(increment1);
         CompletableFuture<Integer> cf2 = cf1.thenApplyAsync(increment2);
         CompletableFuture<Integer> cf3 = cf2.thenApplyAsync(increment3, noContextExecutor);
@@ -976,6 +991,156 @@ public class ConcurrentRxTestServlet extends FATServlet {
     }
 
     /**
+     * Verify that completeAsync is a no-op on an already-completed stage
+     */
+    @Test
+    public void testCompleteAsyncOfCompletedStage() throws Exception {
+        ManagedCompletableFuture<Integer> cf0 = (ManagedCompletableFuture<Integer>) ManagedCompletableFuture.completedFuture(90);
+
+        CompletableFuture<Integer> cf1;
+        try {
+            cf1 = cf0.completeAsync(() -> 900);
+        } catch (UnsupportedOperationException x) {
+            if (AT_LEAST_JAVA_9)
+                throw x;
+            else
+                return; // expected for Java SE 8
+        }
+
+        assertSame(cf0, cf1);
+
+        assertEquals(Integer.valueOf(90), cf0.join());
+    }
+
+    /**
+     * Verify that completeAsync can be used on an incomplete stage to cause it to complete.
+     */
+    @Test
+    public void testCompleteAsyncOfIncompleteStage() throws Exception {
+        ManagedCompletableFuture<String> cf0 = (ManagedCompletableFuture<String>) ManagedCompletableFuture.completedFuture("89");
+
+        ManagedCompletableFuture<String> cf1 = (ManagedCompletableFuture<String>) cf0.newIncompleteFuture();
+
+        CompletableFuture<String> cf2;
+        try {
+            cf2 = cf1.completeAsync(() -> {
+                StringBuilder s = new StringBuilder(Thread.currentThread().getName()).append(':');
+                try {
+                    s.append(InitialContext.doLookup("java:comp/env/executorRef").toString());
+                } catch (NamingException x) {
+                    s.append("NamingException");
+                }
+                return s.toString();
+            }, noContextExecutor);
+        } catch (UnsupportedOperationException x) {
+            if (AT_LEAST_JAVA_9)
+                throw x;
+            else
+                return; // expected for Java SE 8
+        }
+
+        assertSame(cf1, cf2);
+
+        String result = cf2.get(TIMEOUT_NS, TimeUnit.NANOSECONDS);
+        assertTrue(result, result.startsWith("Default Executor-thread-")); // runs on Liberty thread pool
+        assertTrue(result, !Thread.currentThread().getName().equals(result)); // does not run on servlet thread
+        assertTrue(result, result.endsWith(":NamingException")); // namespace context not available to thread
+
+        assertTrue(cf2.isDone());
+        assertFalse(cf2.isCancelled());
+        assertFalse(cf2.isCompletedExceptionally());
+    }
+
+    /**
+     * Use the completeAsync method to complete a stage that is already running.
+     */
+    @Test
+    public void testCompleteAsyncWhileRunning() throws Exception {
+        // supplier that is blocked
+        CountDownLatch beginLatch = new CountDownLatch(1);
+        CountDownLatch continueLatch = new CountDownLatch(1);
+        BlockableSupplier<String> blockingSupplier = new BlockableSupplier<String>("88", beginLatch, continueLatch);
+        ManagedCompletableFuture<String> cf0 = (ManagedCompletableFuture<String>) ManagedCompletableFuture.supplyAsync(blockingSupplier);
+
+        // wait for it to start
+        assertTrue(beginLatch.await(TIMEOUT_NS, TimeUnit.NANOSECONDS));
+
+        CompletableFuture<String> cf1;
+        try {
+            cf1 = cf0.completeAsync(() -> Thread.currentThread().getName());
+        } catch (UnsupportedOperationException x) {
+            continueLatch.countDown();
+            if (AT_LEAST_JAVA_9)
+                throw x;
+            else
+                return; // expected for Java SE 8
+        }
+
+        assertSame("completeAsync must return same instance", cf0, cf1);
+
+        String result = cf0.get(TIMEOUT_NS, TimeUnit.NANOSECONDS);
+        assertTrue(result, result.startsWith("Default Executor-thread-")); // runs on Liberty thread pool
+        assertTrue(result, !Thread.currentThread().getName().equals(result)); // does not run on servlet thread
+
+        // supplier from completeAsync causes in-progress blocking supplier to be canceled & stop running
+        for (long start = System.nanoTime(); blockingSupplier.executionThread != null && System.nanoTime() - start <= TIMEOUT_NS; TimeUnit.MILLISECONDS.sleep(200));
+        assertNull(blockingSupplier.executionThread);
+    }
+
+    /**
+     * Verify that completedStage returns an instance that is completed with the specified value,
+     * is only accessible as a CompletionStage such that methods like obtrude are disallowed,
+     * and that creates dependent stages with the default managed executor and with the same stipulations
+     * on methods.
+     */
+    @Test
+    public void testCompletedStage() throws Exception {
+        CompletionStage<Integer> cs0;
+        try {
+            cs0 = ManagedCompletableFuture.completedStage(86);
+        } catch (UnsupportedOperationException x) {
+            if (AT_LEAST_JAVA_9)
+                throw x;
+            else
+                return; // expected for Java SE 8
+        }
+
+        // Disallow CompletableFuture methods:
+        CompletableFuture<Integer> cf0 = (CompletableFuture<Integer>) cs0;
+        try {
+            cf0.obtrudeValue(860);
+            fail("obtrudeValue must not be permitted on minimal stage: ");
+        } catch (UnsupportedOperationException x) {
+        } // pass
+
+        try {
+            fail("cancel must not be permitted on minimal stage: " + cf0.cancel(true));
+        } catch (UnsupportedOperationException x) {
+        } // pass
+
+        // Verify the value, and the thread of dependent stage:
+        final CompletableFuture<String> cf = new CompletableFuture<String>();
+        CompletionStage<Void> cs1 = cs0.thenAcceptAsync(value -> cf.complete(Thread.currentThread().getName() + ":" + value));
+        String result = cf.get(TIMEOUT_NS, TimeUnit.NANOSECONDS);
+        assertTrue(result, result.endsWith(":86"));
+        assertTrue(result, result.startsWith("Default Executor-thread-"));
+        assertTrue(result, !result.startsWith(Thread.currentThread().getName()));
+
+        // Disallow CompletableFuture methods on dependent stage:
+        CompletableFuture<Void> cf1 = (CompletableFuture<Void>) cs1;
+        try {
+            fail("get must not be permitted on minimal stage: " + cf1.get());
+        } catch (UnsupportedOperationException x) {
+        } // pass
+
+        try {
+            cf1.obtrudeException(new ArithmeticException("test"));
+            fail("obtrudeException must not be permitted on minimal stage: ");
+        } catch (UnsupportedOperationException x) {
+        } // pass
+    }
+
+    /**
      * Verify that the completeExceptionally operation can be used to complete a running action prematurely,
      * and that the corresponding task submitted to the policy executor is canceled.
      */
@@ -1021,6 +1186,52 @@ public class ConcurrentRxTestServlet extends FATServlet {
     }
 
     /**
+     * Verify that a CompletableFuture can be completed prematurely after a timeout.
+     */
+    @Test
+    public void testCompleteOnTimeout() throws Exception {
+        // completeOnTimeout not allowed on Java SE 8, but is otherwise a no-op on an already-completed future
+        ManagedCompletableFuture<Integer> cf0 = (ManagedCompletableFuture<Integer>) ManagedCompletableFuture.completedFuture(95);
+        CompletableFuture<Integer> cf1;
+        try {
+            cf1 = cf0.completeOnTimeout(195, 295, TimeUnit.SECONDS);
+        } catch (UnsupportedOperationException x) {
+            if (AT_LEAST_JAVA_9)
+                throw x;
+            else
+                return; // expected for Java SE 8
+        }
+        assertSame(cf0, cf1);
+        assertEquals(Integer.valueOf(95), cf1.join());
+
+        // time out a blocked completable future
+        CountDownLatch beginLatch = new CountDownLatch(1);
+        CountDownLatch continueLatch = new CountDownLatch(1);
+        try {
+            BlockableSupplier<Integer> supplier = new BlockableSupplier<Integer>(96, beginLatch, continueLatch);
+            ManagedCompletableFuture<Integer> cf2 = (ManagedCompletableFuture<Integer>) ManagedCompletableFuture.supplyAsync(supplier);
+
+            CompletableFuture<Integer> cf3 = cf2.completeOnTimeout(396, 96, TimeUnit.MINUTES);
+            CompletableFuture<Integer> cf4 = cf2.completeOnTimeout(496, 96, TimeUnit.MICROSECONDS);
+
+            assertSame(cf2, cf3);
+            assertSame(cf2, cf4);
+
+            assertEquals(Integer.valueOf(496), cf2.get(TIMEOUT_NS, TimeUnit.NANOSECONDS));
+
+            assertTrue(cf2.isDone());
+            assertFalse(cf2.isCompletedExceptionally());
+            assertFalse(cf2.isCancelled());
+
+            // Expect supplier thread to be interrupted due to premature completion
+            for (long start = System.nanoTime(); supplier.executionThread != null && System.nanoTime() - start < TIMEOUT_NS; TimeUnit.MILLISECONDS.sleep(200));
+            assertNull(supplier.executionThread);
+        } finally {
+            continueLatch.countDown(); // unblock
+        }
+    }
+
+    /**
      * Complete a future while the operation is still running. Verify that the value specified to the complete method is used, not the result of the operation.
      */
     @Test
@@ -1045,6 +1256,142 @@ public class ConcurrentRxTestServlet extends FATServlet {
             // in case the test fails, unblock the thread that is running the supplier
             continueLatch.countDown();
         }
+    }
+
+    /**
+     * Verify that copied stages do not impact the stage from which they are copied.
+     */
+    @Test
+    public void testCopy() throws Exception {
+        CountDownLatch continueLatch = new CountDownLatch(1);
+        BlockableSupplier<Long> blocker = new BlockableSupplier<Long>(100l, null, continueLatch);
+
+        ManagedCompletableFuture<Long> cf0 = (ManagedCompletableFuture<Long>) ManagedCompletableFuture.supplyAsync(blocker);
+
+        if (!AT_LEAST_JAVA_9)
+            try {
+                fail("Should not be able to copy in Java SE 8. " + cf0.copy());
+            } catch (UnsupportedOperationException x) {
+                return; // method unavailable for Java SE 8
+            } finally {
+                continueLatch.countDown();
+            }
+
+        CompletableFuture<Long> cf1 = cf0.copy();
+        CompletableFuture<Long> cf2 = cf0.copy();
+        CompletableFuture<Long> cf3 = cf0.copy();
+
+        assertTrue(cf1 instanceof ManagedCompletableFuture);
+        assertTrue(cf2 instanceof ManagedCompletableFuture);
+        assertTrue(cf3 instanceof ManagedCompletableFuture);
+
+        assertTrue(cf1.complete(200l));
+        assertTrue(cf2.completeExceptionally(new ArithmeticException("Intentional failure")));
+        assertFalse(cf0.isDone());
+        assertFalse(cf3.isDone());
+
+        continueLatch.countDown();
+
+        assertEquals(Long.valueOf(100), cf3.get(TIMEOUT_NS, TimeUnit.NANOSECONDS));
+        assertTrue(cf3.isDone());
+        assertFalse(cf3.isCompletedExceptionally());
+
+        assertEquals(Long.valueOf(200), cf1.getNow(-1l));
+        try {
+            Long result = cf2.getNow(-1l);
+            fail("Unexpected result for copied CompletableFuture: " + result);
+        } catch (CompletionException x) {
+            if (!(x.getCause() instanceof ArithmeticException))
+                throw x;
+        }
+
+        assertEquals(Long.valueOf(100), cf0.get(TIMEOUT_NS, TimeUnit.NANOSECONDS));
+        assertTrue(cf0.isDone());
+        assertFalse(cf0.isCompletedExceptionally());
+    }
+
+    /**
+     * Verify that tasks submitted to a delayed executor (100ms) do run, and that they run with the context of the submitter.
+     * Verify that tasks submitted to a delayed executor (1 hour) do not run during the duration of this test.
+     */
+    @Test
+    public void testDelayedExecutor() throws Exception {
+        Executor delay1hour;
+        try {
+            delay1hour = ManagedCompletableFuture.delayedExecutor(1, TimeUnit.HOURS);
+        } catch (UnsupportedOperationException x) {
+            if (AT_LEAST_JAVA_9)
+                throw x;
+            else // method unavailable for Java SE 8
+                return;
+        }
+        CountDownLatch latch1 = new CountDownLatch(1);
+        delay1hour.execute(() -> latch1.countDown());
+
+        Executor delay100ms = ManagedCompletableFuture.delayedExecutor(100, TimeUnit.MILLISECONDS);
+        CountDownLatch latch3 = new CountDownLatch(3);
+        delay100ms.execute(() -> latch3.countDown());
+        delay100ms.execute(() -> {
+            System.out.println("testDelayedExecutor expects to successfully look up from java:comp");
+            try {
+                InitialContext.doLookup("java:comp/env/executorRef"); // requires context of the web module
+                latch3.countDown();
+            } catch (NamingException x) {
+                fail("Unable to look up java:comp on task submitted to delayed executor: " + x);
+            }
+        });
+        // Request from unmanaged thread in order to lack the context of the web module,
+        testThreads.submit(() -> delay100ms.execute(() -> {
+            try {
+                System.out.println("testDelayedExecutor expects to fail look up from java:comp");
+                Object result = InitialContext.doLookup("java:comp/env/executorRef");
+                fail("Should not be able to look up " + result + " without web module's context");
+            } catch (NamingException x) { // expected when lacking web module's context
+                latch3.countDown();
+            }
+        }));
+        assertTrue(latch3.await(TIMEOUT_NS, TimeUnit.NANOSECONDS));
+
+        // First delayed task (1 hour) didn't run yet
+        assertEquals(1, latch1.getCount());
+
+        // There is no way to cancel the task that is delayed for submit in 1 hour.
+        // Expect the server to shut down with this task still queued up to the scheduled executor.
+    }
+
+    /**
+     * Verify the delayed executor runs tasks on the supplied executor, and that thread context capture
+     * settings of the supplied executor are used when invoking ManagedCompletableFuture *async methods.
+     */
+    @Test
+    public void testDelayedExecutorViaSuppliedExecutor() throws Exception {
+        Executor delay97ms;
+        try {
+            delay97ms = ManagedCompletableFuture.delayedExecutor(97, TimeUnit.MILLISECONDS, oneContextExecutor);
+        } catch (UnsupportedOperationException x) {
+            if (AT_LEAST_JAVA_9)
+                throw x;
+            else // method unavailable for Java SE 8
+                return;
+        }
+
+        Executor delay397msNoContext = ManagedCompletableFuture.delayedExecutor(397, TimeUnit.MILLISECONDS, noContextExecutor);
+
+        CompletableFuture<Integer> cf0 = ManagedCompletableFuture
+                        .supplyAsync(() -> 97, delay397msNoContext)
+                        .thenApplyAsync(i -> {
+                            try {
+                                InitialContext.doLookup("java:comp/env/executorRef"); // require web component's namespace
+                            } catch (NamingException x) {
+                                throw new RuntimeException(x);
+                            }
+                            return i + 1;
+                        }, delay97ms);
+
+        assertEquals(Integer.valueOf(98), cf0.get(TIMEOUT_NS, TimeUnit.NANOSECONDS));
+        assertTrue(cf0.isDone());
+        assertFalse(cf0.isCompletedExceptionally());
+        assertFalse(cf0.isCancelled());
     }
 
     /**
@@ -1123,6 +1470,110 @@ public class ConcurrentRxTestServlet extends FATServlet {
 
         assertEquals(defaultManagedExecutor, cf2.get(TIMEOUT_NS, TimeUnit.NANOSECONDS));
         assertEquals(3, count.get()); // two additional executions of the lookup function
+    }
+
+    /**
+     * Verify that failedFuture returns an instance that is completed with the specified exception
+     * and creates dependent stages with the default managed executor.
+     */
+    @Test
+    public void testFailedFuture() throws Exception {
+        CompletableFuture<String> cf0;
+        try {
+            cf0 = ManagedCompletableFuture.failedFuture(new AssertionError("intentionally failed"));
+        } catch (UnsupportedOperationException x) {
+            if (AT_LEAST_JAVA_9)
+                throw x;
+            else
+                return; // expected for Java SE 8
+        }
+
+        try {
+            fail("join must not succeed on failed future: " + cf0.join());
+        } catch (CompletionException x) {
+            if (x.getCause() instanceof AssertionError && "intentionally failed".equals(x.getCause().getMessage()))
+                ; // expected
+            else
+                throw x;
+        }
+
+        CompletableFuture<Object[]> cf1 = cf0.handleAsync((unused, x) -> new Object[] { unused, x, Thread.currentThread().getName() });
+
+        Object[] results = cf1.get(TIMEOUT_NS, TimeUnit.NANOSECONDS);
+
+        assertNull(results[0]); // null result must be supplied to handleAsync
+        assertTrue(results[1] instanceof AssertionError); // exception must be supplied to handleAysnc
+        assertEquals("intentionally failed", ((AssertionError) results[1]).getMessage());
+        assertTrue(results[2].toString().startsWith("Default Executor-thread-")); // must run on Liberty thread pool
+        assertTrue(!Thread.currentThread().getName().equals(results[2].toString())); // must not run on servlet thread
+
+        cf0.obtrudeValue("not failing anymore!");
+        assertEquals("not failing anymore!", cf0.join());
+
+        Object[] results2 = cf1.join();
+        assertSame("results of completed future do not get recomputed after value of prior stage is obtruded", results, results2);
+    }
+
+    /**
+     * Verify that failedStage returns an instance that is completed with the specified exception,
+     * is only accessible as a CompletionStage such that methods like obtrude are disallowed,
+     * and that creates dependent stages with the default managed executor and with the same stipulations
+     * on methods.
+     */
+    @Test
+    public void testFailedStage() throws Exception {
+        CompletionStage<String> cs0;
+        try {
+            cs0 = ManagedCompletableFuture.failedStage(new NumberFormatException("5f"));
+        } catch (UnsupportedOperationException x) {
+            if (AT_LEAST_JAVA_9)
+                throw x;
+            else
+                return; // expected for Java SE 8
+        }
+
+        // Disallow CompletableFuture methods:
+        CompletableFuture<String> cf0 = (CompletableFuture<String>) cs0;
+        try {
+            cf0.obtrudeException(new NumberFormatException("87"));
+            fail("obtrudeException must not be permitted on minimal stage: ");
+        } catch (UnsupportedOperationException x) {
+        } // pass
+
+        try {
+            fail("join must not be permitted on minimal stage: " + cf0.join());
+        } catch (UnsupportedOperationException x) {
+        } // pass
+
+        CompletionStage<String> cs1 = cs0.handleAsync((unused, x) -> Thread.currentThread().getName() + ':' + x.getMessage());
+
+        // Disallow CompletableFuture methods on dependent stage:
+        CompletableFuture<String> cf1 = (CompletableFuture<String>) cs1;
+        try {
+            fail("get must not be permitted on minimal stage: " + cf1.get(87, TimeUnit.SECONDS));
+        } catch (UnsupportedOperationException x) {
+        } // pass
+
+        try {
+            cf1.obtrudeValue("eighty-seven");
+            fail("obtrudeValue must not be permitted on minimal stage: ");
+        } catch (UnsupportedOperationException x) {
+        } // pass
+
+        // Verify the value, and the thread:
+        CompletableFuture<String> cf2 = cs1.toCompletableFuture();
+        String result = cf2.get(TIMEOUT_NS, TimeUnit.NANOSECONDS);
+        assertTrue(result, result.endsWith(":5f"));
+        assertTrue(result, result.startsWith("Default Executor-thread-"));
+        assertTrue(result, !result.startsWith(Thread.currentThread().getName()));
+
+        // obtrude and the get operation above are possible having obtained a CompletableFuture
+        cf2.obtrudeValue("95");
+        assertEquals("95", cf2.getNow("ninety-five"));
+
+        // the prior obtrude impacts only the CompletableFuture instance obtained previously
+        String result2 = cs1.toCompletableFuture().getNow("fifty-f");
+        assertEquals(result, result2);
     }
 
     /**
@@ -1317,11 +1768,16 @@ public class ConcurrentRxTestServlet extends FATServlet {
         // max concurrency: 1, max queue size: 1, runIfQueueFull: true, policy: strict
         Executor max1strictExecutor = InitialContext.doLookup("java:comp/DefaultManagedScheduledExecutorService");
 
+        ManagedCompletableFuture<Integer> cf = (ManagedCompletableFuture<Integer>) ManagedCompletableFuture.supplyAsync(() -> 0, max1strictExecutor);
+
+        // Ensure that the above task has been removed from the executor's queue so that it does not interfere with subsequent test logic
+        assertEquals(new Integer(0), cf.get(TIMEOUT_NS, TimeUnit.NANOSECONDS));
+
         CountDownLatch beginLatch = new CountDownLatch(1);
         CountDownLatch continueLatch = new CountDownLatch(1);
         CompletableFuture<Integer> cf0, cf1, cf2, cf3, cf4;
         try {
-            cf0 = new ManagedCompletableFuture<Integer>(max1strictExecutor);
+            cf0 = cf.newIncompleteFuture();
 
             // Use up the single max concurrency permit with an async action that blocks
             cf1 = cf0.thenApplyAsync(new BlockableIncrementFunction("testMaxPolicyStrict1", beginLatch, continueLatch, false));
@@ -1545,6 +2001,145 @@ public class ConcurrentRxTestServlet extends FATServlet {
     }
 
     /**
+     * Verify that for post Java SE 8, a minimal completion stage can be obtained and restricts operations
+     * such that the stage only completes naturally.
+     */
+    @Test
+    public void testMinimalCompletionStage() throws Exception {
+        CompletionStage<Short> cs1, cs2, cs4, cs5;
+        final String[] threadNames = new String[6];
+
+        CountDownLatch blocker = new CountDownLatch(1);
+        ManagedCompletableFuture<Short> cf0 = (ManagedCompletableFuture<Short>) ManagedCompletableFuture //
+                        .supplyAsync(new BlockableSupplier<Short>((short) 85, new CountDownLatch(1), blocker));
+        try {
+            try {
+                cs1 = cf0.minimalCompletionStage();
+            } catch (UnsupportedOperationException x) {
+                if (AT_LEAST_JAVA_9)
+                    throw x;
+                else
+                    return; // method not available for Java SE 8
+            }
+
+            assertTrue(cs1 instanceof ManagedCompletableFuture);
+
+            cs2 = cs1.thenApplyAsync(a -> {
+                threadNames[2] = Thread.currentThread().getName();
+                return (short) (a + 1);
+            });
+
+            assertTrue(cs2 instanceof ManagedCompletableFuture);
+
+            CompletableFuture<Short> cf3 = cs2.toCompletableFuture();
+            assertFalse(cf3.isDone());
+            assertTrue(cf3.complete((short) 3));
+            assertEquals(Short.valueOf((short) 3), cf3.getNow((short) 4));
+            assertTrue(cf3.isDone());
+
+            cs4 = cs2.thenApplyAsync(a -> {
+                threadNames[4] = Thread.currentThread().getName();
+                return (short) (a + 10);
+            }, testThreads);
+
+            assertTrue(cs4 instanceof ManagedCompletableFuture);
+
+            cs5 = cs4.thenApply(a -> {
+                threadNames[5] = Thread.currentThread().getName();
+                try {
+                    // require context of thread that creates this stage, not of the thread running the prior stage
+                    InitialContext.doLookup("java:comp/env/executorRef");
+                } catch (NamingException x) {
+                    throw new CompletionException(x);
+                }
+                return (short) (a + 100);
+            });
+
+            ManagedCompletableFuture<Short> cf5 = (ManagedCompletableFuture<Short>) cs5;
+
+            try {
+                fail("cancel must not be permitted on minimal stage: " + cf5.cancel(false));
+            } catch (UnsupportedOperationException x) {
+            } // pass
+
+            try {
+                fail("complete must not be permitted on minimal stage: " + cf5.complete((short) 5));
+            } catch (UnsupportedOperationException x) {
+            } // pass
+
+            try {
+                fail("completeAsync must not be permitted on minimal stage: " + cf5.completeAsync(() -> (short) 15));
+            } catch (UnsupportedOperationException x) {
+            } // pass
+
+            try {
+                fail("completeAsync(executor) must not be permitted on minimal stage: " + cf5.completeAsync(() -> (short) 25, testThreads));
+            } catch (UnsupportedOperationException x) {
+            } // pass
+
+            try {
+                fail("completeExceptionally must not be permitted on minimal stage: " + cf5.completeExceptionally(new IllegalStateException("test")));
+            } catch (UnsupportedOperationException x) {
+            } // pass
+
+            try {
+                fail("completeOnTimeout​ must not be permitted on minimal stage: " + cf5.completeOnTimeout((short) 35, 350, TimeUnit.MILLISECONDS));
+            } catch (UnsupportedOperationException x) {
+            } // pass
+
+            try {
+                fail("get must not be permitted on minimal stage: " + cf5.get());
+            } catch (UnsupportedOperationException x) {
+            } // pass
+
+            try {
+                fail("get(timeout) must not be permitted on minimal stage: " + cf5.get(5, TimeUnit.SECONDS));
+            } catch (UnsupportedOperationException x) {
+            } // pass
+
+            try {
+                fail("join must not be permitted on minimal stage: " + cf5.join());
+            } catch (UnsupportedOperationException x) {
+            } // pass
+
+            try {
+                cf5.obtrudeException(new ClassCastException("test"));
+                fail("obtrudeException must not be permitted on minimal stage: ");
+            } catch (UnsupportedOperationException x) {
+            } // pass
+
+            try {
+                cf5.obtrudeValue((short) 5);
+                fail("obtrudeValue must not be permitted on minimal stage: ");
+            } catch (UnsupportedOperationException x) {
+            } // pass
+
+            try {
+                fail("orTimeout must not be permitted on minimal stage: " + cf5.orTimeout(5, TimeUnit.MINUTES));
+            } catch (UnsupportedOperationException x) {
+            } // pass
+
+            assertFalse(cf0.isDone());
+        } finally {
+            blocker.countDown();
+        }
+
+        assertEquals(Short.valueOf((short) 85), cf0.join());
+        assertTrue(cf0.isDone());
+        assertFalse(cf0.isCancelled());
+        assertFalse(cf0.isCompletedExceptionally());
+
+        CompletableFuture<Short> cf5 = cs5.toCompletableFuture();
+        assertEquals(Short.valueOf((short) 196), cf5.join());
+
+        String currentThreadName = Thread.currentThread().getName();
+        assertTrue(threadNames[2], threadNames[2].startsWith("Default Executor-thread-")); // must run on Liberty global thread pool
+        assertTrue(threadNames[2], !currentThreadName.equals(threadNames[2])); // must not run on servlet thread
+        assertTrue(threadNames[4], !threadNames[4].startsWith("Default Executor-thread-")); // must not run on Liberty global thread pool
+        assertTrue(threadNames[4], !currentThreadName.equals(threadNames[4])); // must not run on servlet thread
+    }
+
+    /**
      * General test of obtruding values and exceptions.
      */
     @Test
@@ -1698,6 +2293,60 @@ public class ConcurrentRxTestServlet extends FATServlet {
         } finally {
             // in case the test fails, unblock the thread that is running the supplier
             continueLatch.countDown();
+        }
+    }
+
+    /**
+     * Verify that a CompletableFuture can be completed prematurely with a TimeoutException after a timeout.
+     */
+    @Test
+    public void testOrTimeout() throws Exception {
+        // orTimeout not allowed on Java SE 8, but is otherwise a no-op on an already-completed future
+        ManagedCompletableFuture<Integer> cf0 = (ManagedCompletableFuture<Integer>) ManagedCompletableFuture.completedFuture(92);
+        CompletableFuture<Integer> cf1;
+        try {
+            cf1 = cf0.orTimeout(192, TimeUnit.MINUTES);
+        } catch (UnsupportedOperationException x) {
+            if (AT_LEAST_JAVA_9)
+                throw x;
+            else
+                return; // expected for Java SE 8
+        }
+        assertSame(cf0, cf1);
+        assertEquals(Integer.valueOf(92), cf1.join());
+
+        // time out a blocked completable future
+        CountDownLatch beginLatch = new CountDownLatch(1);
+        CountDownLatch continueLatch = new CountDownLatch(1);
+        try {
+            BlockableSupplier<Integer> supplier = new BlockableSupplier<Integer>(93, beginLatch, continueLatch);
+            ManagedCompletableFuture<Integer> cf2 = (ManagedCompletableFuture<Integer>) ManagedCompletableFuture.supplyAsync(supplier);
+
+            CompletableFuture<Integer> cf3 = cf2.orTimeout(93, TimeUnit.MINUTES);
+            CompletableFuture<Integer> cf4 = cf2.orTimeout(94, TimeUnit.MICROSECONDS);
+
+            assertSame(cf2, cf3);
+            assertSame(cf2, cf4);
+
+            try {
+                Integer result = cf2.get(TIMEOUT_NS, TimeUnit.NANOSECONDS);
+                fail("Value unexpected for blocked action: " + result);
+            } catch (ExecutionException x) {
+                if (x.getCause() instanceof TimeoutException)
+                    ; // pass
+                else
+                    throw x;
+            }
+
+            assertTrue(cf2.isDone());
+            assertTrue(cf2.isCompletedExceptionally());
+            assertFalse(cf2.isCancelled());
+
+            // Expect supplier thread to be interrupted due to premature completion
+            for (long start = System.nanoTime(); supplier.executionThread != null && System.nanoTime() - start < TIMEOUT_NS; TimeUnit.MILLISECONDS.sleep(200));
+            assertNull(supplier.executionThread);
+        } finally {
+            continueLatch.countDown(); // unblock
         }
     }
 
@@ -2532,7 +3181,7 @@ public class ConcurrentRxTestServlet extends FATServlet {
      */
     @Test
     public void testThenComposeManagedCompletableFuture() throws Exception {
-        ManagedCompletableFuture<String> cf = ManagedCompletableFuture
+        CompletableFuture<String> cf = ManagedCompletableFuture
                         .supplyAsync(() -> 100)
                         .thenCompose(t -> {
                             return ManagedCompletableFuture.supplyAsync(() -> {
